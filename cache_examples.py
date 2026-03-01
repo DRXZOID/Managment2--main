@@ -4,7 +4,7 @@ Usage examples for safe_get caching functionality
 """
 
 import os
-from parser import create_session, safe_get
+from http_client import make_default_client
 
 # Example 1: Basic usage with default cache settings
 def example_basic_usage():
@@ -12,16 +12,16 @@ def example_basic_usage():
     print("Example 1: Basic usage with default cache")
     print("-" * 50)
 
-    session = create_session()
+    client = make_default_client()
     url = "https://example.com"
 
     # First call - fetches from network and caches
-    response = safe_get(session, url)
+    response = client.safe_get(url)
     if response:
         print(f"First request: {response.status_code}")
 
     # Second call - loads from cache
-    response = safe_get(session, url)
+    response = client.safe_get(url)
     if response:
         print(f"Second request: {response.status_code} (from cache)")
 
@@ -34,15 +34,15 @@ def example_disable_cache():
     print("Example 2: Disable cache for specific request")
     print("-" * 50)
 
-    session = create_session()
+    client = make_default_client()
     url = "https://example.com/api/data"
 
     # Always fetch from network
-    response = safe_get(session, url, use_cache=False)
+    response = client.safe_get(url, use_cache=False)
     if response:
         print(f"Request 1: {response.status_code} (from network)")
 
-    response = safe_get(session, url, use_cache=False)
+    response = client.safe_get(url, use_cache=False)
     if response:
         print(f"Request 2: {response.status_code} (from network again)")
 
@@ -55,13 +55,14 @@ def example_custom_cache_dir():
     print("Example 3: Custom cache directory")
     print("-" * 50)
 
-    # Set custom cache directory before importing
+    # Set custom cache directory before creating the client
     custom_cache = "/tmp/my_custom_cache"
     os.environ['PARSER_CACHE_DIR'] = custom_cache
 
-    # Note: In real usage, you should set this BEFORE importing parser
-    print(f"Cache directory: {os.environ.get('PARSER_CACHE_DIR', 'page_cache')}")
-    print(f"Cache max age: {os.environ.get('PARSER_CACHE_MAX_AGE_DAYS', '30')} days")
+    client = make_default_client()
+
+    print(f"Cache directory: {client.cache_dir}")
+    print(f"Cache max age: {client.cache_max_age_days} days")
 
     print()
 
@@ -72,10 +73,12 @@ def example_custom_cache_age():
     print("Example 4: Custom cache expiration time")
     print("-" * 50)
 
-    # Set cache max age before using safe_get
+    # Set cache max age before creating the client
     os.environ['PARSER_CACHE_MAX_AGE_DAYS'] = '7'
 
-    print(f"Cache max age: {os.environ.get('PARSER_CACHE_MAX_AGE_DAYS')} days")
+    client = make_default_client()
+
+    print(f"Cache max age: {client.cache_max_age_days} days")
     print("Cache will be invalidated after 7 days instead of default 30")
 
     print()
@@ -87,7 +90,7 @@ def example_mixed_cache():
     print("Example 5: Mixed cache usage patterns")
     print("-" * 50)
 
-    session = create_session()
+    client = make_default_client()
 
     urls = [
         ("https://example.com/page1", True),   # Use cache
@@ -99,7 +102,7 @@ def example_mixed_cache():
         cache_mode = "cached" if use_cache else "not cached"
         print(f"Fetching {url} ({cache_mode})")
         # Uncomment to run actual requests:
-        # response = safe_get(session, url, use_cache=use_cache)
+        # response = client.safe_get(url, use_cache=use_cache)
 
     print()
 
@@ -112,7 +115,7 @@ def example_cache_efficiency():
 
     import time
 
-    session = create_session()
+    client = make_default_client()
     test_urls = [
         "https://httpbin.org/html",
         "https://httpbin.org/get",
@@ -131,11 +134,11 @@ def example_cache_efficiency():
     # For actual measurement:
     # for url in test_urls:
     #     start = time.time()
-    #     r1 = safe_get(session, url, use_cache=True)
+    #     r1 = client.safe_get(url, use_cache=True)
     #     time1 = time.time() - start
     #
     #     start = time.time()
-    #     r2 = safe_get(session, url, use_cache=True)
+    #     r2 = client.safe_get(url, use_cache=True)
     #     time2 = time.time() - start
     #
     #     print(f"\n{url}")

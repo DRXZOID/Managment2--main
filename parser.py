@@ -1,25 +1,16 @@
-import os
-import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, urljoin
-import time
-import random
 import json
-import sys
 import http.client as http_client
 import logging
 from rapidfuzz import fuzz
 import csv
 import re
-import hashlib
-from pathlib import Path
+
+from http_client import default_client, make_default_client
 
 # Global storage for main-site normalized titles
 MAIN_NORMALIZED = []
-
-# Cache configuration
-CACHE_DIR = os.getenv('PARSER_CACHE_DIR', 'page_cache')
-CACHE_MAX_AGE_DAYS = int(os.getenv('PARSER_CACHE_MAX_AGE_DAYS', '30'))
 
 # Enable debug logging for HTTP requests (can be lowered in production)
 # set debuglevel to 0 to suppress low-level HTTP chatter
@@ -29,149 +20,8 @@ logging.basicConfig()
 logging.getLogger().setLevel(logging.INFO)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
-# helper for creating a session with retries and custom UA
-
-def create_session():
-    sess = requests.Session()
-    sess.headers.update(HEADERS)
-    # retry adapter
-    from requests.adapters import HTTPAdapter
-    from urllib3.util import Retry
-    retries = Retry(total=3, backoff_factor=0.5,
-                    status_forcelist=[429, 500, 502, 503, 504],
-                    allowed_methods=["GET", "POST"])
-    adapter = HTTPAdapter(max_retries=retries)
-    sess.mount('http://', adapter)
-    sess.mount('https://', adapter)
-    return sess
-
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-    'Accept-Language': 'uk-UA,uk;q=0.9,en;q=0.8',
-    'Referer': 'https://www.google.com/',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1',
-    'Cache-Control': 'max-age=0'
-}
-
-# Delay between requests (seconds) - randomized between MIN_DELAY and MAX_DELAY
-# Set FAST_MODE=True to disable sleeping and speed up scraping (useful for
-# local analysis or trusted sites).  In production you may want some delay to
-# avoid triggering anti-scraping protections.
-MIN_DELAY = 1.0
-MAX_DELAY = 2.0
-FAST_MODE = os.getenv('PARSER_FAST', '').lower() in ('1', 'true', 'yes')
-# Maximum number of pages to fetch when paginating. ``None`` means no limit.
-# In fast mode a default of 5 is applied to avoid long loops.
+# Pagination settings
 PAGE_LIMIT = 4
-
-
-def _get_cache_path(url):
-    """Generate cache file path for a given URL.
-    Uses MD5 hash of URL to create a unique filename.
-    """
-    url_hash = hashlib.md5(url.encode()).hexdigest()
-    return os.path.join(CACHE_DIR, f"{url_hash}.cache")
-
-
-def _is_cache_valid(cache_path):
-    """Check if cache file exists and is not older than CACHE_MAX_AGE_DAYS.
-    Returns True if cache is valid, False otherwise.
-    """
-    if not os.path.exists(cache_path):
-        return False
-
-    file_age_seconds = time.time() - os.path.getmtime(cache_path)
-    max_age_seconds = CACHE_MAX_AGE_DAYS * 24 * 60 * 60
-    return file_age_seconds < max_age_seconds
-
-
-def _load_from_cache(cache_path):
-    """Load cached response content from disk.
-    Returns the content bytes if successful, None otherwise.
-    """
-    try:
-        with open(cache_path, 'rb') as f:
-            return f.read()
-    except Exception as e:
-        print(f"Failed to load cache from {cache_path}: {e}")
-        return None
-
-
-def _save_to_cache(cache_path, content):
-    """Save response content to cache file on disk.
-    Creates cache directory if it doesn't exist.
-    """
-    try:
-        os.makedirs(CACHE_DIR, exist_ok=True)
-        with open(cache_path, 'wb') as f:
-            f.write(content)
-    except Exception as e:
-        print(f"Failed to save cache to {cache_path}: {e}")
-
-
-def safe_get(session, url, method='GET', use_cache=True, **kwargs):
-    """Perform a GET request with logging, timeout and optional delay.
-    Returns Response or None.
-
-    Args:
-        session: requests.Session object
-        url: URL to fetch
-        method: HTTP method (default: 'GET')
-        use_cache: Whether to use caching for GET requests (default: True)
-        **kwargs: Additional arguments to pass to session.request
-
-    Caching behavior:
-    - Only applies to GET requests when use_cache=True
-    - Only caches successful responses (status_code 200)
-    - Cache expiration: CACHE_MAX_AGE_DAYS (default: 30 days)
-    - Cache location: CACHE_DIR (default: 'page_cache', overrideable via PARSER_CACHE_DIR env var)
-    """
-    # Check cache for GET requests if caching is enabled
-    cache_path = None
-    if method.upper() == 'GET' and use_cache:
-        cache_path = _get_cache_path(url)
-        if _is_cache_valid(cache_path):
-            cached_content = _load_from_cache(cache_path)
-            if cached_content:
-                # Create a mock Response object with cached content
-                from requests.models import Response
-                resp = Response()
-                resp.status_code = 200
-                resp._content = cached_content
-                resp.url = url
-                resp.headers['Content-Type'] = 'text/html; charset=utf-8'
-                print(f"--> {method} {url} (from cache)")
-                return resp
-
-    print(f"--> {method} {url}")
-    print(f"    headers: {session.headers}")
-    if 'params' in kwargs:
-        print(f"    params: {kwargs['params']}")
-    if 'data' in kwargs or 'json' in kwargs:
-        print(f"    body: {kwargs.get('data') or kwargs.get('json')}")
-    try:
-        resp = session.request(method, url, timeout=15, allow_redirects=True, **kwargs)
-        print(f"<-- status {resp.status_code} for {url}")
-        if resp.status_code in (400, 403, 429):
-            txt = resp.text[:1000].replace('\n',' ')
-            print(f"    response text: {txt}")
-            return None
-
-        # Cache successful responses (status 200) for GET requests
-        if method.upper() == 'GET' and use_cache and resp.status_code == 200 and cache_path:
-            _save_to_cache(cache_path, resp.content)
-
-        # polite randomized delay after successful request to avoid being blocked
-        if not FAST_MODE:
-            delay = random.uniform(MIN_DELAY, MAX_DELAY)
-            time.sleep(delay)
-        return resp
-    except Exception as e:
-        print(f"Request failed for {url}: {e}")
-        return None
 
 
 
@@ -294,7 +144,7 @@ def normalize_link(base, link):
     return urljoin(base, link)
 
 
-def paginate_and_collect(base_url, session, item_selectors, name_selectors, price_selectors, link_selectors):
+def paginate_and_collect(client, session, base_url, item_selectors, name_selectors, price_selectors, link_selectors):
     """
     Attempts to paginate using a pattern. It will try to detect a working pagination scheme:
     - If base_url already contains "page=", it will replace that value.
@@ -360,7 +210,7 @@ def paginate_and_collect(base_url, session, item_selectors, name_selectors, pric
                 urls.add(match)
         for u in urls:
             full = urljoin(base_url, u)
-            resp = safe_get(session, full)
+            resp = client.safe_get(full, session=session)
             if resp:
                 extracted = check_for_json(resp, full)
                 if extracted:
@@ -373,7 +223,7 @@ def paginate_and_collect(base_url, session, item_selectors, name_selectors, pric
         url1 = pat(1)
         if not url1:
             continue
-        resp = safe_get(session, url1)
+        resp = client.safe_get(url1, session=session)
         if not resp:
             continue
         # first check for API/JSON response
@@ -391,7 +241,7 @@ def paginate_and_collect(base_url, session, item_selectors, name_selectors, pric
     # If none patterns returned items, try the base url without pagination
     if chosen is None:
         print(f"Trying base URL without pagination: {base_url}")
-        resp = safe_get(session, base_url)
+        resp = client.safe_get(base_url, session=session)
         if not resp:
             print(f"Failed to get response from {base_url}")
             return []
@@ -546,7 +396,7 @@ def paginate_and_collect(base_url, session, item_selectors, name_selectors, pric
     empty_page_count = 0  # count consecutive pages with no valid items
     # determine effective page limit
     limit = PAGE_LIMIT
-    if FAST_MODE and limit is None:
+    if client.fast_mode and limit is None:
         limit = 5
     while True:
         if limit and page > limit:
@@ -557,7 +407,7 @@ def paginate_and_collect(base_url, session, item_selectors, name_selectors, pric
             break
 
         print(f"Fetching: {target_url}")
-        resp = safe_get(session, target_url)
+        resp = client.safe_get(target_url, session=session)
         if not resp:
             break
 
@@ -655,6 +505,10 @@ def paginate_and_collect(base_url, session, item_selectors, name_selectors, pric
 
 # Specific site parsers
 
+def _client_from_session(session):
+    return getattr(session, "_client", default_client)
+
+
 def scrape_prohockey(session, category='sticks-sr'):
     """
     Scrape products from prohockey.com.ua
@@ -669,8 +523,9 @@ def scrape_prohockey(session, category='sticks-sr'):
     """
     # build default URL but allow discovery to override it
     base = f'https://prohockey.com.ua/catalog/{category}'
+    client = _client_from_session(session)
     if category:
-        found = find_category_page(session, 'https://prohockey.com.ua', category)
+        found = find_category_page(client, session, 'https://prohockey.com.ua', category)
         if found and found != base:
             print(f"  -> using discovered reference category page: {found}")
             base = found
@@ -724,7 +579,7 @@ def scrape_prohockey(session, category='sticks-sr'):
         'a'
     ]
 
-    raw = paginate_and_collect(base, session, item_selectors, name_selectors, price_selectors, link_selectors)
+    raw = paginate_and_collect(client, session, base, item_selectors, name_selectors, price_selectors, link_selectors)
     results = []
     for r in raw:
         results.append({
@@ -745,6 +600,7 @@ def scrape_hockeyshans(session, category='2'):
         category: category ID (e.g., '2')
     """
     base = f'https://hockeyshans.com.ua/category/{category}'
+    client = _client_from_session(session)
 
     # the site uses a carousel of "thumbnail" elements; each card contains
     # an <a> with the image/title and a nested <div class="caption"> with an
@@ -778,7 +634,7 @@ def scrape_hockeyshans(session, category='2'):
         'a'
     ]
 
-    raw = paginate_and_collect(base, session, item_selectors, name_selectors, price_selectors, link_selectors)
+    raw = paginate_and_collect(client, session, base, item_selectors, name_selectors, price_selectors, link_selectors)
     results = []
     for r in raw:
         results.append({
@@ -790,7 +646,7 @@ def scrape_hockeyshans(session, category='2'):
     return results
 
 
-def get_prohockey_categories(session):
+def get_prohockey_categories(client):
     """Return a list of category slugs observed on the prohockey homepage.
 
     The function scans anchor tags for paths containing "/catalog/" and
@@ -798,7 +654,7 @@ def get_prohockey_categories(session):
     de-duplicated and sorted.
     """
     base = 'https://prohockey.com.ua'
-    resp = safe_get(session, base)
+    resp = client.safe_get(base, session=client.session)
     if not resp:
         return []
     soup = BeautifulSoup(resp.content, 'html.parser')
@@ -816,7 +672,7 @@ def get_prohockey_categories(session):
     return sorted(cats)
 
 
-def fetch_main_site_products(session, categories=None):
+def fetch_main_site_products(client, categories=None):
     """Return list of products from the reference site (prohockey) suitable
     for matching. Each item is dict with name, price, currency, url, source_site.
 
@@ -824,12 +680,12 @@ def fetch_main_site_products(session, categories=None):
     dynamically from the prohockey homepage via :func:`get_prohockey_categories`.
     """
     if categories is None:
-        categories = get_prohockey_categories(session)
+        categories = get_prohockey_categories(client)
         print(f"fetch_main_site_products: discovered {len(categories)} categories")
     results = []
     for cat in categories:
         print(f"fetch_main_site_products: category={cat}")
-        items = scrape_prohockey(session, category=cat)
+        items = scrape_prohockey(client.session, category=cat)
         for it in items:
             name = it.get('name','')
             price = it.get('price','')
@@ -856,7 +712,7 @@ def fetch_main_site_products(session, categories=None):
 # requested category by looking for links whose href or text contains the
 # keyword. if found, we will scrape that page instead of the originally
 # provided URL.
-def find_category_page(session, base_url, category):
+def find_category_page(client, session, base_url, category):
     """Try to locate a category-specific URL on *base_url* site.
 
     Returns an absolute URL pointing to a page whose anchor href or link text
@@ -877,7 +733,7 @@ def find_category_page(session, base_url, category):
 
     cat_lower = category.lower()
     for u in try_urls:
-        resp = safe_get(session, u)
+        resp = client.safe_get(u, session=session)
         if not resp:
             continue
         soup = BeautifulSoup(resp.content, 'html.parser')
@@ -893,7 +749,7 @@ def find_category_page(session, base_url, category):
     return None
 
 
-def fetch_other_site_products(session, url, category=None):
+def fetch_other_site_products(client, url, category=None):
     """Generic fetch for any other site URL. Returns list of product dicts.
 
     The *url* argument may be any reachable page on the target site. If
@@ -924,21 +780,25 @@ def fetch_other_site_products(session, url, category=None):
         if category and not cat:
             # category may be an id string
             cat = str(category)
-        print(f"  -> delegating to scrape_hockeyshans (category={cat})")
-        return scrape_hockeyshans(session, category=cat or '2')
+        print(f"  -> delegating to scrape_hockeyshans (category={cat or '2'})")
+        return scrape_hockeyshans(client.session, category=cat or '2')
 
     base = url if url.startswith('http') else 'https://' + url
     if category:
-        candidate = find_category_page(session, base, category)
+        candidate = find_category_page(client, client.session, base, category)
         if candidate and candidate != base:
             print(f"  -> discovered category page on target site: {candidate}")
             base = candidate
 
-    raw = paginate_and_collect(base, session,
-                               item_selectors=[],
-                               name_selectors=[],
-                               price_selectors=[],
-                               link_selectors=[])
+    raw = paginate_and_collect(
+        client,
+        client.session,
+        base,
+        item_selectors=[],
+        name_selectors=[],
+        price_selectors=[],
+        link_selectors=[],
+    )
     print(f"    paginate_and_collect returned {len(raw)} raw items")
     results = []
     for it in raw:
@@ -1000,7 +860,7 @@ def print_table(results):
 
 
 def main():
-    session = create_session()
+    client = make_default_client()
 
     # example list of other site URLs - can be loaded from file/config
     other_sites = [
@@ -1008,12 +868,12 @@ def main():
         # add more urls here
     ]
 
-    main_products = fetch_main_site_products(session)
+    main_products = fetch_main_site_products(client)
     print(f"main site has {len(main_products)} products")
 
     final = []
     for site in other_sites:
-        others = fetch_other_site_products(session, site)
+        others = fetch_other_site_products(client, site)
         for p in others:
             exists = product_exists_on_main(p['name'])
             if not exists:

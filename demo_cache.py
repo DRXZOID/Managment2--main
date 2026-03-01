@@ -4,16 +4,16 @@
 import time
 import os
 import shutil
-from parser import create_session, safe_get, CACHE_DIR
+from http_client import make_default_client
+
 
 def demo_cache_usage():
     """Demonstrate cache functionality"""
+    client = make_default_client()
 
     # Clean up cache from previous runs
-    if os.path.exists(CACHE_DIR):
-        shutil.rmtree(CACHE_DIR)
-
-    session = create_session()
+    if os.path.exists(client.cache_dir):
+        shutil.rmtree(client.cache_dir)
 
     # Test URL (using httpbin for testing)
     test_url = "https://httpbin.org/html"
@@ -26,7 +26,7 @@ def demo_cache_usage():
     print(f"\n1. First request to {test_url}")
     print("   (should fetch from network and cache)")
     start = time.time()
-    response1 = safe_get(session, test_url, use_cache=True)
+    response1 = client.safe_get(test_url, use_cache=True)
     elapsed1 = time.time() - start
 
     if response1:
@@ -41,7 +41,7 @@ def demo_cache_usage():
     print(f"\n2. Second request to {test_url}")
     print("   (should load from cache)")
     start = time.time()
-    response2 = safe_get(session, test_url, use_cache=True)
+    response2 = client.safe_get(test_url, use_cache=True)
     elapsed2 = time.time() - start
 
     if response2:
@@ -65,7 +65,7 @@ def demo_cache_usage():
     print(f"\n3. Third request to {test_url}")
     print("   (caching disabled - should fetch from network again)")
     start = time.time()
-    response3 = safe_get(session, test_url, use_cache=False)
+    response3 = client.safe_get(test_url, use_cache=False)
     elapsed3 = time.time() - start
 
     if response3:
@@ -73,19 +73,20 @@ def demo_cache_usage():
         print(f"   Time: {elapsed3:.3f}s (network request)")
 
     print("\n" + "=" * 60)
-    print(f"Cache directory: {os.path.abspath(CACHE_DIR)}")
-    if os.path.exists(CACHE_DIR):
-        files = os.listdir(CACHE_DIR)
+    print(f"Cache directory: {os.path.abspath(client.cache_dir)}")
+    if os.path.exists(client.cache_dir):
+        files = os.listdir(client.cache_dir)
         print(f"Cached files: {len(files)}")
         for f in files:
-            size = os.path.getsize(os.path.join(CACHE_DIR, f))
+            size = os.path.getsize(os.path.join(client.cache_dir, f))
             print(f"  - {f} ({size} bytes)")
     print("=" * 60)
 
     # Cleanup
-    if os.path.exists(CACHE_DIR):
-        shutil.rmtree(CACHE_DIR)
+    if os.path.exists(client.cache_dir):
+        shutil.rmtree(client.cache_dir)
         print(f"\nCleaned up cache directory")
+
 
 if __name__ == '__main__':
     try:
@@ -94,4 +95,3 @@ if __name__ == '__main__':
         print(f"Error: {e}")
         print("\nNote: This demo requires internet connection.")
         print("Running with httpbin.org for testing purposes.")
-

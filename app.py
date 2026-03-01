@@ -6,15 +6,12 @@ from difflib import SequenceMatcher
 import json
 from urllib.parse import urlparse
 from parser import (
-    scrape_prohockey,
-    scrape_hockeyshans,
-    HEADERS,
-    create_session,
     fetch_main_site_products,
     fetch_other_site_products,
     product_exists_on_main,
     get_prohockey_categories,
 )
+from __init__ import default_client
 
 app = Flask(__name__)
 CORS(app)
@@ -183,8 +180,7 @@ def categories_list():
 
     The frontend uses this to populate its category dropdown dynamically.
     """
-    session = create_session()
-    cats = get_prohockey_categories(session)
+    cats = get_prohockey_categories(default_client)
     return jsonify({'categories': cats})
 
 
@@ -200,8 +196,7 @@ def check_missing():
     if not urls:
         return jsonify({'error': 'Не указаны URL'}), 400
 
-    session = create_session()
-    main_products = fetch_main_site_products(session, [category] if category else None)
+    main_products = fetch_main_site_products(default_client, [category] if category else None)
     print(f"Main site items: {len(main_products)} (category={category})")
 
     missing = []
@@ -210,7 +205,7 @@ def check_missing():
         if not url.startswith('http'):
             url = 'https://' + url
         print(f"checking other site: {url} (category={category})")
-        others = fetch_other_site_products(session, url, category=category)
+        others = fetch_other_site_products(default_client, url, category=category)
         scanned += len(others)
         for p in others:
             if not product_exists_on_main(p['name']):
