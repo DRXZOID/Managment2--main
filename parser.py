@@ -11,9 +11,15 @@ import logging
 from rapidfuzz import fuzz
 import csv
 import re
+import hashlib
+from pathlib import Path
 
 # Global storage for main-site normalized titles
 MAIN_NORMALIZED = []
+
+# Cache configuration
+CACHE_DIR = os.getenv('PARSER_CACHE_DIR', 'page_cache')
+CACHE_MAX_AGE_DAYS = int(os.getenv('PARSER_CACHE_MAX_AGE_DAYS', '30'))
 
 # Enable debug logging for HTTP requests (can be lowered in production)
 # set debuglevel to 0 to suppress low-level HTTP chatter
@@ -62,10 +68,84 @@ FAST_MODE = os.getenv('PARSER_FAST', '').lower() in ('1', 'true', 'yes')
 PAGE_LIMIT = 4
 
 
-def safe_get(session, url, method='GET', **kwargs):
+def _get_cache_path(url):
+    """Generate cache file path for a given URL.
+    Uses MD5 hash of URL to create a unique filename.
+    """
+    url_hash = hashlib.md5(url.encode()).hexdigest()
+    return os.path.join(CACHE_DIR, f"{url_hash}.cache")
+
+
+def _is_cache_valid(cache_path):
+    """Check if cache file exists and is not older than CACHE_MAX_AGE_DAYS.
+    Returns True if cache is valid, False otherwise.
+    """
+    if not os.path.exists(cache_path):
+        return False
+
+    file_age_seconds = time.time() - os.path.getmtime(cache_path)
+    max_age_seconds = CACHE_MAX_AGE_DAYS * 24 * 60 * 60
+    return file_age_seconds < max_age_seconds
+
+
+def _load_from_cache(cache_path):
+    """Load cached response content from disk.
+    Returns the content bytes if successful, None otherwise.
+    """
+    try:
+        with open(cache_path, 'rb') as f:
+            return f.read()
+    except Exception as e:
+        print(f"Failed to load cache from {cache_path}: {e}")
+        return None
+
+
+def _save_to_cache(cache_path, content):
+    """Save response content to cache file on disk.
+    Creates cache directory if it doesn't exist.
+    """
+    try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        with open(cache_path, 'wb') as f:
+            f.write(content)
+    except Exception as e:
+        print(f"Failed to save cache to {cache_path}: {e}")
+
+
+def safe_get(session, url, method='GET', use_cache=True, **kwargs):
     """Perform a GET request with logging, timeout and optional delay.
     Returns Response or None.
+
+    Args:
+        session: requests.Session object
+        url: URL to fetch
+        method: HTTP method (default: 'GET')
+        use_cache: Whether to use caching for GET requests (default: True)
+        **kwargs: Additional arguments to pass to session.request
+
+    Caching behavior:
+    - Only applies to GET requests when use_cache=True
+    - Only caches successful responses (status_code 200)
+    - Cache expiration: CACHE_MAX_AGE_DAYS (default: 30 days)
+    - Cache location: CACHE_DIR (default: 'page_cache', overrideable via PARSER_CACHE_DIR env var)
     """
+    # Check cache for GET requests if caching is enabled
+    cache_path = None
+    if method.upper() == 'GET' and use_cache:
+        cache_path = _get_cache_path(url)
+        if _is_cache_valid(cache_path):
+            cached_content = _load_from_cache(cache_path)
+            if cached_content:
+                # Create a mock Response object with cached content
+                from requests.models import Response
+                resp = Response()
+                resp.status_code = 200
+                resp._content = cached_content
+                resp.url = url
+                resp.headers['Content-Type'] = 'text/html; charset=utf-8'
+                print(f"--> {method} {url} (from cache)")
+                return resp
+
     print(f"--> {method} {url}")
     print(f"    headers: {session.headers}")
     if 'params' in kwargs:
@@ -79,6 +159,11 @@ def safe_get(session, url, method='GET', **kwargs):
             txt = resp.text[:1000].replace('\n',' ')
             print(f"    response text: {txt}")
             return None
+
+        # Cache successful responses (status 200) for GET requests
+        if method.upper() == 'GET' and use_cache and resp.status_code == 200 and cache_path:
+            _save_to_cache(cache_path, resp.content)
+
         # polite randomized delay after successful request to avoid being blocked
         if not FAST_MODE:
             delay = random.uniform(MIN_DELAY, MAX_DELAY)
@@ -87,6 +172,7 @@ def safe_get(session, url, method='GET', **kwargs):
     except Exception as e:
         print(f"Request failed for {url}: {e}")
         return None
+
 
 
 def extract_text(el):
@@ -672,6 +758,7 @@ def scrape_hockeyshans(session, category='2'):
 
     name_selectors = [
         'div.capt-title h5',
+        'div.caption h4',
         'div.caption h5',
         'h5',
         'a[title]',
