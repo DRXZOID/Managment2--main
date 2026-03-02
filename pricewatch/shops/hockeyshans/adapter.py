@@ -30,30 +30,18 @@ class HockeyShansAdapter(BaseShopAdapter):
 
         item_selectors = [
             "div.thumbnail",
-            "li.span2_4",
-            "div.caption",
         ]
 
         name_selectors = [
-            "div.capt-title h5",
             "div.caption h4",
-            "div.caption h5",
-            "h5",
-            "a[title]",
-            "img[alt]",
         ]
 
         price_selectors = [
-            "div.btn-group",
-            ".btn-usdprice",
             ".btn-primary",
-            ".price",
-            ".amount",
         ]
 
         link_selectors = [
             'a[href^="/item/"]',
-            "a",
         ]
 
         raw = paginate_and_collect(
@@ -64,6 +52,7 @@ class HockeyShansAdapter(BaseShopAdapter):
             name_selectors,
             price_selectors,
             link_selectors,
+            page_limit=1,
         )
         results = []
         for r in raw:

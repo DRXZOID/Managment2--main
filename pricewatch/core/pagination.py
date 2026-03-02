@@ -15,7 +15,7 @@ from .extract import (
 PAGE_LIMIT = 4
 
 
-def paginate_and_collect(client, session, base_url, item_selectors, name_selectors, price_selectors, link_selectors):
+def paginate_and_collect(client, session, base_url, item_selectors, name_selectors, price_selectors, link_selectors, page_limit=PAGE_LIMIT):
     """
     Attempts to paginate using a pattern. It will try to detect a working pagination scheme.
     """
@@ -233,7 +233,7 @@ def paginate_and_collect(client, session, base_url, item_selectors, name_selecto
     results = []
     page = 1
     empty_page_count = 0
-    limit = PAGE_LIMIT
+    limit = page_limit
     if client.fast_mode and limit is None:
         limit = 5
     while True:
