@@ -1,4 +1,4 @@
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
 from bs4 import BeautifulSoup
 
@@ -14,27 +14,46 @@ class ProHockeyAdapter(BaseShopAdapter):
     is_reference = True
 
     def get_categories(self, client):
-        base = "https://prohockey.com.ua"
-        resp = client.safe_get(base, session=client.session)
+        host = next(iter(self.domains), None)
+        if not host:
+            return []
+        base = f"http://{host}"
+
+        try:
+            resp = client.safe_get(base, session=client.session)
+        except Exception as exc:
+            print(f"get_categories: failed to fetch {base}: {exc}")
+            return []
+
         if not resp:
             return []
+
         soup = BeautifulSoup(resp.content, "html.parser")
-        cats = set()
-        for a in soup.select("a[href]"):
-            href = a["href"]
-            if "/catalog/" in href:
-                parsed = urlparse(href)
-                path = parsed.path
-                parts = path.split("/catalog/")
-                if len(parts) > 1:
-                    slug = parts[1].strip("/")
-                    if slug:
-                        cats.add(slug)
-        return sorted(cats)
+        out = []
+        # Only look for links inside <a class="dropdown-item"> blocks
+        containers = soup.find_all('a', class_='dropdown-item')
+        if not containers:
+            print("  -> no .menu_round blocks found on the page")
+            return []
+
+        for block in containers:
+            href = block['href']
+            if not href.startswith('/catalog/'):
+                continue
+            name = block.get_text(strip=True)
+            full = urljoin(base, href)
+            # ensure same domain
+            if urlparse(full).netloc != urlparse(base).netloc:
+                continue
+            print(f"  -> discovered hockeyworld category: {name} -> {full}")
+            out.append({'name': name, 'url': full})
+
+        return out
 
     def scrape_category(self, client, category):
         # TODO: move selectors/rules to templates loaded from YAML.
-        base = f"https://prohockey.com.ua/catalog/{category}"
+        #base = f"https://prohockey.com.ua/catalog/{category}"
+        base= f"{category}" if category else "https://prohockey.com.ua/catalog"
         if category:
             found = find_category_page(client, client.session, "https://prohockey.com.ua", category)
             if found and found != base:

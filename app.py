@@ -11,7 +11,29 @@ from __init__ import default_client
 app = Flask(__name__)
 CORS(app)
 
+# ensure Flask's jsonify emits actual UTF-8 (not ascii-escaped)
+app.json.ensure_ascii = False
+
 registry = get_registry()
+
+
+@app.after_request
+def set_response_charset(response):
+    """Ensure responses include charset=utf-8 in Content-Type for API/HTML responses.
+
+    This keeps behavior explicit for clients that expect a charset header.
+    Only add charset when it's not already present.
+    """
+    try:
+        content_type = response.headers.get('Content-Type', '')
+        if 'charset' not in content_type.lower():
+            mimetype = response.mimetype or ''
+            if mimetype in ('application/json', 'text/html', 'application/javascript'):
+                response.headers['Content-Type'] = f"{mimetype}; charset=utf-8"
+    except Exception as e:
+        # preserve existing behavior on failure, but log for debugging
+        print(f"set_response_charset failed: {e}")
+    return response
 
 
 def _item_to_dict(item):
@@ -33,6 +55,23 @@ def scrape():
     # keep the old scrape behaviour for backwards compatibility
     # (it still powers the previous comparison UI if needed)
     return "not implemented", 501
+
+@app.route('/api/adapters', methods=['GET'])
+def adapters_list():
+    """Return the list of available adapters and their supported domains.
+
+    The frontend uses this to show which sites are supported for scraping.
+    """
+    adapters = []
+    for adapter in registry.adapters:
+        # exclude the reference adapter from the returned list
+        if getattr(adapter, 'is_reference', False):
+            continue
+        adapters.append({
+            'name': adapter.name,
+            'domains': adapter.domains,
+        })
+    return jsonify({'adapters': adapters})
 
 
 @app.route('/api/categories', methods=['GET'])
@@ -68,10 +107,10 @@ def check_missing():
     for url in urls:
         if not url.startswith('http'):
             url = 'https://' + url
-        print(f"checking other site: {url} (category={category})")
+        print(f"checking other site: {url}")
         adapter = registry.for_url(url) or GenericAdapter()
         print(f"  -> adapter: {adapter.name}")
-        others = adapter.scrape_url(default_client, url, category=category)
+        others = adapter.scrape_url(default_client, url)
         scanned += len(others)
         for p in others:
             if not product_exists_on_main(p.name):
@@ -106,6 +145,26 @@ def parse_example():
             })
     
     return jsonify({'products': products})
+
+@app.route('/api/adapters/<adapter_name>/categories', methods=['GET'])
+def adapter_categories(adapter_name):
+    """Return categories produced by the named adapter (by adapter.name).
+
+    If adapter is not found, return 404. The adapter receives the shared
+    `default_client` instance and must support `get_categories(client)`.
+    """
+    # find adapter by name
+    adapter = None
+    for a in registry.adapters:
+        if a.name == adapter_name:
+            adapter = a
+            break
+    if not adapter:
+        return jsonify({'error': 'adapter not found'}), 404
+
+    print(f"Fetching categories for adapter: {adapter.name}")
+    cats = adapter.get_categories(default_client)
+    return jsonify({'categories': cats})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
