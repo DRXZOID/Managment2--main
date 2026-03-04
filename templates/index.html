@@ -25,7 +25,7 @@
 
         header {
             text-align: center;
-            color: white;
+            color: black;
             margin-bottom: 40px;
         }
 
@@ -71,7 +71,7 @@
             gap: 10px;
         }
 
-        input[type="text"] {
+        input[type="text"], select {
             flex: 1;
             padding: 12px;
             border: 2px solid #e0e0e0;
@@ -80,7 +80,7 @@
             transition: border-color 0.3s;
         }
 
-        input[type="text"]:focus {
+        input[type="text"]:focus, select:focus {
             outline: none;
             border-color: #667eea;
         }
@@ -329,6 +329,7 @@
         <header>
             <h1>🔍 Перевірка відсутніх товарів</h1>
             <p class="subtitle">Введіть посилання на інші магазини — будемо шукати товари, яких нема на prohockey.com.ua</p>
+        </header>
 
         <div class="input-section">
             <form id="compareForm">
@@ -338,16 +339,25 @@
                         <option value="">(не вказано)</option>
                         <!-- additional options will be injected by JS -->
                     </select>
-                    <label for="urls">Посилання на інші магазини:</label>
+                    <label for="urlInputs">Посилання на інші магазини:</label>
                     <div class="url-inputs" id="urlInputs">
+                        <!-- Each row contains two dropdowns: adapter and category -->
                         <div class="url-input-row">
-                            <input type="text" class="url-input" placeholder="Приклад: shop1.com/products або https://shop1.com/products" value="">
+                            <label style="display:none">Adapter</label>
+                            <select class="adapter-select" aria-label="adapter-select"></select>
+                            <label style="display:none">Category</label>
+                            <select class="category-select" aria-label="category-select"></select>
+                            <button type="button" class="btn-remove" onclick="removeUrlRow(this)">Видалити</button>
                         </div>
                         <div class="url-input-row">
-                            <input type="text" class="url-input" placeholder="Приклад: shop2.com/products або https://shop2.com/products" value="">
+                            <label style="display:none">Adapter</label>
+                            <select class="adapter-select" aria-label="adapter-select"></select>
+                            <label style="display:none">Category</label>
+                            <select class="category-select" aria-label="category-select"></select>
+                            <button type="button" class="btn-remove" onclick="removeUrlRow(this)">Видалити</button>
                         </div>
                     </div>
-                    <button type="button" class="btn-add" onclick="addUrlInput()">+ Додати ще посилання</button>
+                    <button type="button" class="btn-add" onclick="addUrlRow()">+ Додати ще посилання</button>
                 </div>
 
                 <button type="submit" class="btn-submit" id="submitBtn">Перевірити відсутні</button>
@@ -374,52 +384,151 @@
     </div>
 
     <script>
-        function addUrlInput() {
-            const urlInputs = document.getElementById('urlInputs');
-            const newRow = document.createElement('div');
-            newRow.className = 'url-input-row';
-            newRow.innerHTML = `
-                <input type="text" class="url-input" placeholder="Приклад: shop2.com/products">
-                <button type="button" class="btn-remove" onclick="removeUrlInput(this)">Видалити</button>
-            `;
-            urlInputs.appendChild(newRow);
+        // store adapters cache
+        let _adapters = [];
+
+        async function initialize() {
+            await loadAdapters();
+            // load reference categories (prohockey) into top-level category select
+            await loadReferenceCategories();
+            // populate existing rows
+            const rows = document.querySelectorAll('.url-input-row');
+            for (const row of rows) {
+                const adapterSel = row.querySelector('.adapter-select');
+                const catSel = row.querySelector('.category-select');
+                populateAdapterOptions(adapterSel);
+                // when adapter changes, load categories
+                adapterSel.addEventListener('change', () => onAdapterChange(adapterSel, catSel));
+                // trigger initial load: if there's at least one adapter option, select the first real option (skip placeholder)
+                if (adapterSel.options.length > 1) {
+                    adapterSel.selectedIndex = 1; // skip placeholder
+                    await onAdapterChange(adapterSel, catSel);
+                }
+            }
         }
 
-        function removeUrlInput(button) {
-            button.parentElement.remove();
+        async function loadAdapters() {
+            try {
+                const resp = await fetch('/api/adapters');
+                if (!resp.ok) return;
+                const data = await resp.json();
+                _adapters = data.adapters || [];
+            } catch (e) {
+                console.error('failed to load adapters', e);
+            }
         }
 
-        // fetch available categories from backend and populate dropdown
-        async function loadCategories() {
+        async function loadReferenceCategories() {
             try {
                 const resp = await fetch('/api/categories');
                 if (!resp.ok) return;
                 const data = await resp.json();
+                const cats = data.categories || [];
                 const sel = document.getElementById('category');
-                data.categories.forEach(cat => {
+                // clear existing except the first default option
+                sel.querySelectorAll('option:not([value=""])').forEach(o => o.remove());
+                cats.forEach(c => {
                     const opt = document.createElement('option');
-                    opt.value = cat;
-                    opt.textContent = cat;
+                    if (typeof c === 'string') {
+                        opt.value = c;
+                        opt.textContent = c;
+                    } else if (c && typeof c === 'object') {
+                        opt.value = c.url || c.name || c;
+                        opt.textContent = c.name || c.url || c;
+                    }
                     sel.appendChild(opt);
                 });
             } catch (e) {
-                console.error('failed to load categories', e);
+                console.error('failed to load reference categories', e);
             }
         }
 
-        document.addEventListener('DOMContentLoaded', loadCategories);
+        function populateAdapterOptions(select) {
+            // clear
+            select.innerHTML = '';
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = '(виберіть адаптер)';
+            select.appendChild(placeholder);
+            _adapters.forEach(a => {
+                const opt = document.createElement('option');
+                opt.value = a.name;
+                // show first domain if present for readability
+                opt.textContent = a.name + (a.domains && a.domains.length ? ' (' + a.domains[0] + ')' : '');
+                select.appendChild(opt);
+            });
+        }
+
+        async function onAdapterChange(adapterSel, catSel) {
+            const adapterName = adapterSel.value;
+            catSel.innerHTML = '';
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = '(категорія)';
+            catSel.appendChild(placeholder);
+            if (!adapterName) return;
+            try {
+                const resp = await fetch('/api/adapters/' + encodeURIComponent(adapterName) + '/categories');
+                if (!resp.ok) return;
+                const data = await resp.json();
+                const cats = data.categories || [];
+                cats.forEach(c => {
+                    const opt = document.createElement('option');
+                    if (typeof c === 'string') {
+                        opt.value = c;
+                        opt.textContent = c;
+                    } else if (c && typeof c === 'object') {
+                        opt.value = c.url || c.name;
+                        opt.textContent = c.name || c.url || '';
+                    }
+                    catSel.appendChild(opt);
+                });
+            } catch (e) {
+                console.error('failed to load categories for', adapterName, e);
+            }
+        }
+
+        function addUrlRow() {
+            const urlInputs = document.getElementById('urlInputs');
+            const newRow = document.createElement('div');
+            newRow.className = 'url-input-row';
+            newRow.innerHTML = `
+                <label style="display:none">Adapter</label>
+                <select class="adapter-select" aria-label="adapter-select"></select>
+                <label style="display:none">Category</label>
+                <select class="category-select" aria-label="category-select"></select>
+                <button type="button" class="btn-remove" onclick="removeUrlRow(this)">Видалити</button>
+            `;
+            urlInputs.appendChild(newRow);
+            const adapterSel = newRow.querySelector('.adapter-select');
+            const catSel = newRow.querySelector('.category-select');
+            populateAdapterOptions(adapterSel);
+            adapterSel.addEventListener('change', () => onAdapterChange(adapterSel, catSel));
+            // if there's at least one adapter, select first and load categories
+            if (adapterSel.options.length > 1) {
+                adapterSel.selectedIndex = 1; // skip placeholder
+                onAdapterChange(adapterSel, catSel);
+            }
+        }
+
+        function removeUrlRow(button) {
+            button.parentElement.remove();
+        }
+
+        document.addEventListener('DOMContentLoaded', initialize);
 
         document.getElementById('compareForm').addEventListener('submit', async (e) => {
             e.preventDefault();
 
             const category = document.getElementById('category').value;
-            const urlInputs = document.querySelectorAll('.url-inputs input[type="text"]');
-            const urls = Array.from(urlInputs)
-                .map(input => input.value.trim())
-                .filter(url => url.length > 0);
+            const rows = document.querySelectorAll('.url-input-row');
+            const urls = Array.from(rows).map(row => {
+                const catSel = row.querySelector('.category-select');
+                return (catSel && catSel.value) ? catSel.value : '';
+            }).filter(v => v);
 
             if (urls.length === 0) {
-                showError('Будь ласка, введіть принаймні одне посилання');
+                showError('Будь ласка, виберіть принаймні одну пару адаптер/категорія');
                 return;
             }
 

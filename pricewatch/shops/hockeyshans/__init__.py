@@ -1,0 +1,2 @@
+# hockeyshans adapter
+

@@ -1,170 +1,60 @@
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 from bs4 import BeautifulSoup
-import requests
-from difflib import SequenceMatcher
-import json
-from urllib.parse import urlparse
-from parser import (
-    scrape_prohockey,
-    scrape_hockeyshans,
-    HEADERS,
-    create_session,
-    fetch_main_site_products,
-    fetch_other_site_products,
-    product_exists_on_main,
-    get_prohockey_categories,
-)
+
+from pricewatch.core.registry import get_registry
+from pricewatch.core.reference_service import ReferenceCatalogBuilder
+from pricewatch.core.generic_adapter import GenericAdapter
+from pricewatch.core.normalize import product_exists_on_main, parse_price
+from __init__ import default_client
 
 app = Flask(__name__)
 CORS(app)
 
-class ProductScraper:
-    def __init__(self):
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-    
-    def scrape_products(self, url):
-        """
-        Попытка парсить продукты с сайта
-        Возвращает список словарей с ключами: article, name, model, url
-        """
-        try:
-            response = requests.get(url, headers=self.headers, timeout=10)
-            response.encoding = 'utf-8'
-            soup = BeautifulSoup(response.content, 'lxml')
-            
-            products = []
-            domain = urlparse(url).netloc
-            
-            # Пытаемся найти товары по общим селекторам
-            # Ищем элементы с названиями товаров, артикулами и моделями
-            
-            for item in soup.find_all(['div', 'article', 'td'], class_=['product', 'item', 'good', 'товар']):
-                product = self.extract_product_info(item, domain)
-                if product:
-                    products.append(product)
-            
-            # Если не найдено, пытаемся альтернативные селекторы
-            if not products:
-                for item in soup.find_all('div'):
-                    if any(attr in str(item.get('class', [])).lower() for attr in ['product', 'item', 'catalog']):
-                        product = self.extract_product_info(item, domain)
-                        if product:
-                            products.append(product)
-            
-            return products
-        
-        except Exception as e:
-            return {'error': f'Ошибка при парсинге: {str(e)}'}
-    
-    def extract_product_info(self, element, domain):
-        """Извлекает информацию о товаре из элемента"""
-        try:
-            # Ищем название
-            name_elem = element.find(['h2', 'h3', 'h4', 'a', 'span'], class_=['name', 'title', 'product-name'])
-            name = name_elem.get_text(strip=True) if name_elem else None
-            
-            # Ищем артикул
-            article_elem = element.find(['span', 'div', 'p'], class_=['article', 'sku', 'code', 'артикул'])
-            article = article_elem.get_text(strip=True) if article_elem else None
-            
-            # Ищем модель
-            model_elem = element.find(['span', 'div', 'p'], class_=['model', 'модель'])
-            model = model_elem.get_text(strip=True) if model_elem else None
-            
-            # Если не нашли через классы, ищем в тексте
-            if not article or not name:
-                all_text = element.get_text(separator=' ', strip=True)
-                if len(all_text) < 500:  # Чтобы не брать огромные блоки
-                    if not name or len(name) < 5:
-                        name = all_text[:100]
-                    if not article:
-                        article = name[:20] if name else 'N/A'
-            
-            if name and len(name) > 3:
-                return {
-                    'article': article or 'N/A',
-                    'name': name[:200],
-                    'model': model or 'N/A',
-                    'source_domain': domain
-                }
-        except:
-            pass
-        
-        return None
+# ensure Flask's jsonify emits actual UTF-8 (not ascii-escaped)
+app.json.ensure_ascii = False
 
-class ProductComparator:
-    def __init__(self):
-        self.similarity_threshold = 0.6
-    
-    def compare_products(self, all_products):
-        """
-        Сравнивает товары и группирует похожие
-        Возвращает: {similar_products: [...], unique_products: [...]}
-        """
-        matched_groups = []
-        used_indices = set()
-        
-        for i in range(len(all_products)):
-            if i in used_indices:
-                continue
-            
-            group = [all_products[i]]
-            used_indices.add(i)
-            
-            for j in range(i + 1, len(all_products)):
-                if j in used_indices:
-                    continue
-                
-                if self.is_similar(all_products[i], all_products[j]):
-                    group.append(all_products[j])
-                    used_indices.add(j)
-            
-            if len(group) > 1:
-                matched_groups.append(group)
-            else:
-                # Добавляем даже неуникальные товары в результат
-                matched_groups.append(group)
-        
-        # Разделяем на похожие и уникальные
-        similar = [group for group in matched_groups if len(group) > 1]
-        unique = [group[0] for group in matched_groups if len(group) == 1]
-        
-        return {
-            'similar_products': similar,
-            'unique_products': unique,
-            'total_products': len(all_products)
-        }
-    
-    def is_similar(self, product1, product2):
-        """Проверяет схожесть двух товаров"""
-        # Сравниваем названия
-        name_similarity = self.get_similarity(
-            product1['name'].lower(),
-            product2['name'].lower()
-        )
-        
-        # Сравниваем артикули
-        article_similarity = self.get_similarity(
-            product1['article'].lower(),
-            product2['article'].lower()
-        )
-        
-        # Если артикули совпадают или очень похожи, это скорее всего одно и то же
-        if article_similarity > 0.8:
-            return True
-        
-        # Если названия достаточно похожи
-        if name_similarity > self.similarity_threshold:
-            return True
-        
-        return False
-    
-    def get_similarity(self, str1, str2):
-        """Получает коэффициент схожести двух строк"""
-        return SequenceMatcher(None, str1, str2).ratio()
+registry = get_registry()
+
+
+@app.after_request
+def set_response_charset(response):
+    """Ensure responses include charset=utf-8 in Content-Type for API/HTML responses.
+
+    This keeps behavior explicit for clients that expect a charset header.
+    Only add charset when it's not already present.
+    """
+    try:
+        content_type = response.headers.get('Content-Type', '')
+        if 'charset' not in content_type.lower():
+            mimetype = response.mimetype or ''
+            if mimetype in ('application/json', 'text/html', 'application/javascript'):
+                response.headers['Content-Type'] = f"{mimetype}; charset=utf-8"
+    except Exception as e:
+        # preserve existing behavior on failure, but log for debugging
+        print(f"set_response_charset failed: {e}")
+    return response
+
+
+def _item_to_dict(item):
+    price_value, currency = parse_price(item.price_raw)
+    return {
+        "name": item.name,
+        "price": price_value,
+        "currency": currency,
+        "url": item.url,
+        "source_site": item.source_site,
+    }
+
+
+def _decode_escapes(s):
+    # only attempt decode when it looks like an escaped unicode sequence
+    if not isinstance(s, str) or "\\u" not in s:
+        return s
+    try:
+        return s.encode('utf-8').decode('unicode_escape')
+    except Exception:
+        return s
 
 @app.route('/')
 def index():
@@ -176,6 +66,23 @@ def scrape():
     # (it still powers the previous comparison UI if needed)
     return "not implemented", 501
 
+@app.route('/api/adapters', methods=['GET'])
+def adapters_list():
+    """Return the list of available adapters and their supported domains.
+
+    The frontend uses this to show which sites are supported for scraping.
+    """
+    adapters = []
+    for adapter in registry.adapters:
+        # exclude the reference adapter from the returned list
+        if getattr(adapter, 'is_reference', False):
+            continue
+        adapters.append({
+            'name': adapter.name,
+            'domains': adapter.domains,
+        })
+    return jsonify({'adapters': adapters})
+
 
 @app.route('/api/categories', methods=['GET'])
 def categories_list():
@@ -183,8 +90,8 @@ def categories_list():
 
     The frontend uses this to populate its category dropdown dynamically.
     """
-    session = create_session()
-    cats = get_prohockey_categories(session)
+    reference = registry.reference_adapter()
+    cats = reference.get_categories(default_client)
     return jsonify({'categories': cats})
 
 
@@ -200,8 +107,9 @@ def check_missing():
     if not urls:
         return jsonify({'error': 'Не указаны URL'}), 400
 
-    session = create_session()
-    main_products = fetch_main_site_products(session, [category] if category else None)
+    reference = registry.reference_adapter()
+    builder = ReferenceCatalogBuilder(reference, default_client)
+    main_products = builder.build([category] if category else None)
     print(f"Main site items: {len(main_products)} (category={category})")
 
     missing = []
@@ -209,13 +117,18 @@ def check_missing():
     for url in urls:
         if not url.startswith('http'):
             url = 'https://' + url
-        print(f"checking other site: {url} (category={category})")
-        others = fetch_other_site_products(session, url, category=category)
+        print(f"checking other site: {url}")
+        adapter = registry.for_url(url) or GenericAdapter()
+        print(f"  -> adapter: {adapter.name}")
+        others = adapter.scrape_url(default_client, url)
         scanned += len(others)
         for p in others:
-            if not product_exists_on_main(p['name']):
-                p['status'] = 'нема такого товару'
-                missing.append(p)
+            if not product_exists_on_main(p.name):
+                entry = _item_to_dict(p)
+                entry['status'] = 'нема такого товару'
+                missing.append(entry)
+            else:
+                print(f"  -> found on main: {p.name}")
 
     return jsonify({
         'missing': missing,
@@ -244,6 +157,33 @@ def parse_example():
             })
     
     return jsonify({'products': products})
+
+@app.route('/api/adapters/<adapter_name>/categories', methods=['GET'])
+def adapter_categories(adapter_name):
+    """Return categories produced by the named adapter (by adapter.name).
+
+    If adapter is not found, return 404. The adapter receives the shared
+    `default_client` instance and must support `get_categories(client)`.
+    """
+    # find adapter by name
+    adapter = None
+    for a in registry.adapters:
+        if a.name == adapter_name:
+            adapter = a
+            break
+    if not adapter:
+        return jsonify({'error': 'adapter not found'}), 404
+
+    print(f"Fetching categories for adapter: {adapter.name}")
+    cats = adapter.get_categories(default_client)
+
+    # decode any escaped unicode sequences returned by adapters (e.g. '\\u041f...')
+    if isinstance(cats, list):
+        for c in cats:
+            if isinstance(c, dict) and 'name' in c and isinstance(c['name'], str):
+                c['name'] = _decode_escapes(c['name'])
+
+    return jsonify({'categories': cats})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

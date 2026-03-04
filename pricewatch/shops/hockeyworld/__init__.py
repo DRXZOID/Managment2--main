@@ -1,0 +1,2 @@
+# hockeyworld adapter
+

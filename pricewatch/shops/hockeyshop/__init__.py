@@ -1,0 +1,2 @@
+# hockeyshop adapter
+
