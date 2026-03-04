@@ -5,7 +5,12 @@ from bs4 import BeautifulSoup
 from pricewatch.core.registry import get_registry
 from pricewatch.core.reference_service import ReferenceCatalogBuilder
 from pricewatch.core.generic_adapter import GenericAdapter
-from pricewatch.core.normalize import product_exists_on_main, parse_price
+from pricewatch.core.normalize import (
+    product_exists_on_main,
+    parse_price_value,
+    normalize_title,
+    MAIN_NORMALIZED,
+)
 from __init__ import default_client
 
 app = Flask(__name__)
@@ -37,7 +42,8 @@ def set_response_charset(response):
 
 
 def _item_to_dict(item):
-    price_value, currency = parse_price(item.price_raw)
+    # возвращаем числовую цену, если возможно
+    price_value, currency = parse_price_value(item.price_raw)
     return {
         "name": item.name,
         "price": price_value,
@@ -112,6 +118,17 @@ def check_missing():
     main_products = builder.build([category] if category else None)
     print(f"Main site items: {len(main_products)} (category={category})")
 
+    # ensure MAIN_NORMALIZED is in sync (ReferenceCatalogBuilder usually fills it; tests may monkeypatch)
+    MAIN_NORMALIZED.clear()
+    for r in main_products:
+        MAIN_NORMALIZED.append(normalize_title(r.name))
+
+    # build index: normalize_title -> list of product items
+    ref_index = {}
+    for r in main_products:
+        key = normalize_title(r.name)
+        ref_index.setdefault(key, []).append(r)
+
     missing = []
     scanned = 0
     for url in urls:
@@ -123,12 +140,78 @@ def check_missing():
         others = adapter.scrape_url(default_client, url)
         scanned += len(others)
         for p in others:
+            entry = _item_to_dict(p)
+            # default values
+            entry['status'] = 2
+            entry['status_reason'] = 'no_ref'
+            entry['ref'] = None
+
             if not product_exists_on_main(p.name):
-                entry = _item_to_dict(p)
-                entry['status'] = 'нема такого товару'
+                # no match on main site
+                entry['status'] = 2
+                entry['status_reason'] = 'no_ref'
                 missing.append(entry)
+                continue
+
+            # try to find reference items by normalized title
+            key = normalize_title(p.name)
+            refs = ref_index.get(key, [])
+            if not refs:
+                entry['status'] = 2
+                entry['status_reason'] = 'no_ref'
+                missing.append(entry)
+                continue
+
+            # parse test price
+            test_price, test_currency = parse_price_value(p.price_raw)
+            if test_price is None:
+                entry['status'] = 2
+                entry['status_reason'] = 'invalid_price'
+                missing.append(entry)
+                continue
+
+            # parse reference prices and select minimal valid price
+            valid_refs = []
+            for r in refs:
+                ref_price, ref_curr = parse_price_value(r.price_raw)
+                if ref_price is not None:
+                    valid_refs.append((ref_price, ref_curr, r))
+
+            if not valid_refs:
+                entry['status'] = 2
+                entry['status_reason'] = 'invalid_ref_price'
+                missing.append(entry)
+                continue
+
+            # select minimal price among refs
+            valid_refs.sort(key=lambda x: x[0])
+            ref_price, ref_curr, ref_item = valid_refs[0]
+
+            # currency must match strictly
+            if (ref_curr or '').strip() != (test_currency or '').strip():
+                entry['status'] = 2
+                entry['status_reason'] = 'currency_mismatch'
+                missing.append(entry)
+                continue
+
+            # decide status based on numeric comparison
+            if ref_price <= test_price:
+                entry['status'] = 0
+                entry['status_reason'] = 'ref_leq_test'
             else:
-                print(f"  -> found on main: {p.name}")
+                entry['status'] = 1
+                entry['status_reason'] = 'ref_gt_test'
+
+            # include reference snippet
+            entry['ref'] = {
+                'name': ref_item.name,
+                'price': ref_price,
+                'currency': ref_curr,
+                'url': ref_item.url,
+                'source_site': ref_item.source_site,
+            }
+
+            missing.append(entry)
 
     return jsonify({
         'missing': missing,
@@ -177,7 +260,7 @@ def adapter_categories(adapter_name):
     print(f"Fetching categories for adapter: {adapter.name}")
     cats = adapter.get_categories(default_client)
 
-    # decode any escaped unicode sequences returned by adapters (e.g. '\\u041f...')
+    # decode any escaped unicode sequences returned by adapters (e.g. '\u041f...')
     if isinstance(cats, list):
         for c in cats:
             if isinstance(c, dict) and 'name' in c and isinstance(c['name'], str):
