@@ -568,34 +568,51 @@
             `;
             document.getElementById('stats').innerHTML = statsHtml;
 
-            // Отображаем результаты
+            // Отображаем результати
             const container = document.getElementById('allProductsContainer');
             if (data.missing && data.missing.length > 0) {
-                container.innerHTML = createFlatTable(data.missing.map(p => ({
-                    source_domain: p.source_site,
-                    name: p.name,
-                    price: `${p.price} ${p.currency}`.trim(),
-                    url: p.url
-                }))).replace(/<th>Ціна<\//, '<th>Ціна / Валюта</');
+                container.innerHTML = createTableWithStatus(data.missing);
             } else {
                 container.innerHTML = '<p class="no-data">Не знайдено відсутніх товарів</p>';
             }
 
             document.getElementById('results').classList.add('visible');
         }
-        function createFlatTable(products) {
-            let html = '<table><thead><tr><th>Джерело</th><th>Назва</th><th>Ціна / Валюта</th><th>Посилання</th></tr></thead><tbody>';
+
+        function statusBadge(status, reason) {
+            if (status === 0) {
+                return `<span style="color: #155724; background: #d4edda; padding:4px 8px; border-radius:4px; font-weight:600">OK</span>`;
+            } else if (status === 1) {
+                return `<span style="color: #856404; background: #fff3cd; padding:4px 8px; border-radius:4px; font-weight:600">Ref &gt; Test</span>`;
+            } else {
+                return `<span style="color: #721c24; background: #f8d7da; padding:4px 8px; border-radius:4px; font-weight:600">No ref</span>`;
+            }
+        }
+
+        function createTableWithStatus(products) {
+            let html = '<table><thead><tr><th>Джерело</th><th>Назва</th><th>Ціна</th><th>Реф</th><th>Статус</th><th>Посилання</th></tr></thead><tbody>';
 
             products.forEach(product => {
-                const source = escapeHtml(product.source_domain || '—');
+                const source = escapeHtml(product.source_site || '—');
                 const name = escapeHtml(product.name || '—');
-                const price = escapeHtml(product.price || '—');
+                const price = product.price != null ? `${product.price} ${escapeHtml(product.currency || '')}`.trim() : '—';
+                let refHtml = '—';
+                if (product.ref) {
+                    const r = product.ref;
+                    refHtml = `${escapeHtml(r.name || '')} — ${r.price != null ? `${r.price} ${escapeHtml(r.currency || '')}` : '—'}`;
+                    if (r.url) {
+                        refHtml += ` <a href="${escapeHtml(r.url)}" target="_blank">(link)</a>`;
+                    }
+                }
+                const statusCell = statusBadge(product.status, product.status_reason) + (product.status_reason ? ` <div style="font-size:0.8em;color:#666">${escapeHtml(product.status_reason)}</div>` : '');
                 const link = product.url ? `<a href="${escapeHtml(product.url)}" target="_blank">Переглянути</a>` : '';
 
                 html += `<tr>
                     <td>${source}</td>
                     <td>${name}</td>
                     <td>${price}</td>
+                    <td>${refHtml}</td>
+                    <td>${statusCell}</td>
                     <td>${link}</td>
                 </tr>`;
             });
