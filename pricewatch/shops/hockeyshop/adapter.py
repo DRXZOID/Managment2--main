@@ -129,7 +129,7 @@ class HockeyShopAdapter(BaseShopAdapter):
 
                 # price: try multiple likely selectors
                 price_node = node.select_one('div.PricesalesPrice') or node.select_one('.PricesalesPrice') or node.select_one('.price') or node.select_one('.product-price') or node.select_one('span.price')
-                price = price_node.get_text(' ', strip=True) if price_node else ''
+                price = " ".join(price_node.get_text(' ', strip=True).split()[:2]) if price_node else ''
 
                 full_link = urljoin(current, link) if link else current
                 domain = urlparse(full_link).netloc

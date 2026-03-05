@@ -205,79 +205,8 @@ def check_missing():
         print(f"  -> adapter: {adapter.name}")
         others = adapter.scrape_url(default_client, url)
         scanned += len(others)
-        for p in others:
-            entry = _item_to_dict(p)
-            # default values
-            entry['status'] = 2
-            entry['status_reason'] = 'no_ref'
-            entry['ref'] = None
 
-            if not product_exists_on_main(p.name):
-                # no match on main site
-                entry['status'] = 2
-                entry['status_reason'] = 'no_ref'
-                missing.append(entry)
-                continue
-
-            # try to find reference items by normalized title
-            key = normalize_title(p.name)
-            refs = ref_index.get(key, [])
-            if not refs:
-                entry['status'] = 2
-                entry['status_reason'] = 'no_ref'
-                missing.append(entry)
-                continue
-
-            # parse test price
-            test_price, test_currency = parse_price_value(p.price_raw)
-            if test_price is None:
-                entry['status'] = 2
-                entry['status_reason'] = 'invalid_price'
-                missing.append(entry)
-                continue
-
-            # parse reference prices and select minimal valid price
-            valid_refs = []
-            for r in refs:
-                ref_price, ref_curr = parse_price_value(r.price_raw)
-                if ref_price is not None:
-                    valid_refs.append((ref_price, ref_curr, r))
-
-            if not valid_refs:
-                entry['status'] = 2
-                entry['status_reason'] = 'invalid_ref_price'
-                missing.append(entry)
-                continue
-
-            # select minimal price among refs
-            valid_refs.sort(key=lambda x: x[0])
-            ref_price, ref_curr, ref_item = valid_refs[0]
-
-            # currency must match strictly
-            if (ref_curr or '').strip() != (test_currency or '').strip():
-                entry['status'] = 2
-                entry['status_reason'] = 'currency_mismatch'
-                missing.append(entry)
-                continue
-
-            # decide status based on numeric comparison
-            if ref_price <= test_price:
-                entry['status'] = 0
-                entry['status_reason'] = 'ref_leq_test'
-            else:
-                entry['status'] = 1
-                entry['status_reason'] = 'ref_gt_test'
-
-            # include reference snippet
-            entry['ref'] = {
-                'name': ref_item.name,
-                'price': ref_price,
-                'currency': ref_curr,
-                'url': ref_item.url,
-                'source_site': ref_item.source_site,
-            }
-
-            missing.append(entry)
+    missing.append(product_exists_on_main(main_products, others))
 
     return jsonify({
         'missing': missing,
