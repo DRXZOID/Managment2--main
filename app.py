@@ -53,6 +53,21 @@ def _item_to_dict(item):
     }
 
 
+def _reference_item_to_dict(item):
+    price_value, currency = parse_price_value(item.price_raw)
+    return {
+        "name": item.name,
+        "price": price_value,
+        "currency": currency,
+        "url": item.url,
+        "source_site": item.source_site,
+        "price_raw": item.price_raw,
+    }
+
+
+
+
+
 def _decode_escapes(s):
     # only attempt decode when it looks like an escaped unicode sequence
     if not isinstance(s, str) or "\\u" not in s:
@@ -99,6 +114,57 @@ def categories_list():
     reference = registry.reference_adapter()
     cats = reference.get_categories(default_client)
     return jsonify({'categories': cats})
+
+
+@app.route('/api/reference-products', methods=['GET'])
+def reference_products():
+    category = (request.args.get('category') or '').strip()
+    if not category:
+        return jsonify({'error': 'category query parameter is required'}), 400
+
+    search_query = (request.args.get('q') or '').strip().lower()
+    try:
+        page = int(request.args.get('page', 1))
+    except ValueError:
+        page = 1
+    try:
+        page_size = int(request.args.get('page_size', 20))
+    except ValueError:
+        page_size = 20
+
+    page = max(1, page)
+    page_size = max(1, min(page_size, 100))
+
+    reference = registry.reference_adapter()
+    builder = ReferenceCatalogBuilder(reference, default_client)
+    try:
+        catalog = builder.build([category])
+    except Exception as exc:
+        print(f"reference_products failed: {exc}")
+        return jsonify({'error': 'failed to load reference catalog'}), 500
+
+    filtered = []
+    for item in catalog:
+        if search_query:
+            name = (item.name or '').lower()
+            source = (item.source_site or '').lower()
+            if search_query not in name and search_query not in source:
+                continue
+        filtered.append(item)
+
+    total = len(filtered)
+    start = (page - 1) * page_size
+    end = start + page_size
+    page_items = filtered[start:end]
+    data = [_reference_item_to_dict(item) for item in page_items]
+
+    return jsonify({
+        'items': data,
+        'total': total,
+        'page': page,
+        'per_page': page_size,
+        'has_more': end < total,
+    })
 
 
 @app.route('/api/check', methods=['POST'])

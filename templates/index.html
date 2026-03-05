@@ -40,12 +40,190 @@
             opacity: 0.9;
         }
 
+        .main-grid {
+            display: grid;
+            gap: 24px;
+            grid-template-columns: 30% 1fr;
+            align-items: flex-start;
+        }
+
+        .left-column {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .right-column {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .panel {
+            background: white;
+            border-radius: 14px;
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.15);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+
+        .panel-subtitle {
+            margin-top: 6px;
+            color: #555;
+            font-size: 0.95em;
+        }
+
+        #referenceSearch {
+            min-width: 200px;
+            border-radius: 8px;
+            border: 2px solid #e0e0e0;
+            padding: 10px 14px;
+            font-size: 1em;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        #referenceSearch:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.25);
+        }
+
+        .reference-panel {
+            height: 50vh;
+            max-height: 50vh;
+            gap: 12px;
+            overflow: hidden;
+        }
+
+        .reference-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-height: 180px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .reference-card {
+            border-radius: 10px;
+            border: 1px solid #e2e9ff;
+            background: #fbfdff;
+            box-shadow: inset 0 0 0 1px rgba(102, 126, 234, 0.15);
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .reference-card-body {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .reference-card h3 {
+            font-size: 1.05em;
+            color: #1d1d1d;
+            font-weight: 600;
+        }
+
+        .reference-card-source {
+            font-size: 0.9em;
+            color: #5c6373;
+        }
+
+        .reference-card-price {
+            font-weight: 700;
+            color: #2c6dfc;
+            white-space: nowrap;
+        }
+
+        .reference-card-link {
+            text-decoration: none;
+            color: #2c6dfc;
+            font-weight: 600;
+            font-size: 0.9em;
+            align-self: flex-start;
+        }
+
+        .reference-loading {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            color: #667eea;
+            border-radius: 10px;
+            border: 1px solid rgba(102, 126, 234, 0.25);
+            background: #f5f7ff;
+            padding: 12px 16px;
+        }
+
+        .reference-loading.visible {
+            display: flex;
+        }
+
+        .reference-error {
+            display: none;
+            background: #fff5f5;
+            border: 1px solid #f5c2c7;
+            color: #b91c1c;
+            padding: 12px 14px;
+            border-radius: 8px;
+        }
+
+        .reference-error.visible {
+            display: block;
+        }
+
+        .reference-sentinel {
+            height: 1px;
+        }
+
+        .spinner.small {
+            width: 30px;
+            height: 30px;
+            border-width: 3px;
+        }
+
+        .results-section {
+            display: none;
+        }
+
+        .results-section.visible {
+            display: block;
+        }
+
+        .results-panel {
+            background: transparent;
+            box-shadow: none;
+            padding: 0;
+            gap: 0;
+        }
+
+        .results-container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
         .input-section {
             background: white;
             padding: 30px;
             border-radius: 10px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            margin-bottom: 30px;
+            width: 100%;
         }
 
         .form-group {
@@ -69,9 +247,12 @@
         .url-input-row {
             display: flex;
             gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
         }
 
-        input[type="text"], select {
+        input[type="text"],
+        select {
             flex: 1;
             padding: 12px;
             border: 2px solid #e0e0e0;
@@ -80,9 +261,14 @@
             transition: border-color 0.3s;
         }
 
-        input[type="text"]:focus, select:focus {
+        input[type="text"]:focus,
+        select:focus {
             outline: none;
             border-color: #667eea;
+        }
+
+        .input-section select {
+            max-width: 300px;
         }
 
         button {
@@ -137,28 +323,62 @@
             transform: none;
         }
 
-        .results-section {
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #667eea;
             display: none;
         }
 
-        .results-section.visible {
+        .loading.visible {
             display: block;
         }
 
-        .results-container {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            margin-bottom: 30px;
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
         }
 
-        h2 {
-            color: #333;
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 15px;
+            border-left: 4px solid #c62828;
+            display: none;
+        }
+
+        .error.visible {
+            display: block;
+        }
+
+        .stats {
+            background: #f0f4ff;
+            padding: 20px;
+            border-radius: 5px;
             margin-bottom: 20px;
-            font-size: 1.8em;
-            border-bottom: 3px solid #667eea;
-            padding-bottom: 10px;
+            border-left: 4px solid #667eea;
+        }
+
+        .stats-text {
+            font-size: 1.1em;
+            color: #333;
+            margin: 5px 0;
+        }
+
+        .stats-text strong {
+            color: #667eea;
         }
 
         .table-wrapper {
@@ -238,71 +458,19 @@
             margin-bottom: 5px;
         }
 
-        .loading {
-            text-align: center;
-            padding: 20px;
-            color: #667eea;
-            display: none;
-        }
-
-        .loading.visible {
-            display: block;
-        }
-
-        .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #667eea;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 10px;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .error {
-            background: #ffebee;
-            color: #c62828;
-            padding: 15px;
-            border-radius: 5px;
-            margin-top: 15px;
-            border-left: 4px solid #c62828;
-            display: none;
-        }
-
-        .error.visible {
-            display: block;
-        }
-
-        .stats {
-            background: #f0f4ff;
-            padding: 20px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            border-left: 4px solid #667eea;
-        }
-
-        .stats-text {
-            font-size: 1.1em;
-            color: #333;
-            margin: 5px 0;
-        }
-
-        .stats-text strong {
-            color: #667eea;
-        }
-
         .no-data {
             text-align: center;
-            padding: 40px;
+            padding: 30px;
             color: #999;
             background: #f5f5f5;
-            border-radius: 5px;
-            font-size: 1.1em;
+            border-radius: 8px;
+            font-size: 1.05em;
+        }
+
+        @media (max-width: 1024px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
         }
 
         @media (max-width: 768px) {
@@ -321,80 +489,123 @@
             td, th {
                 padding: 10px;
             }
+
+            .reference-panel,
+            .reference-list {
+                min-height: auto;
+            }
+
+            .panel-header {
+                flex-direction: column;
+                align-items: flex-start;
+            }
+
+            #referenceSearch {
+                width: 100%;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1>🔍 Перевірка відсутніх товарів</h1>
-            <p class="subtitle">Введіть посилання на інші магазини — будемо шукати товари, яких нема на prohockey.com.ua</p>
-        </header>
+        <div class="main-grid">
+            <section class="left-column">
+                <div class="input-section">
+                    <form id="compareForm">
+                        <div class="form-group">
+                            <label for="category">Категорія:</label>
+                            <select id="category">
+                                <option value="">(не вказано)</option>
+                                <!-- additional options will be injected by JS -->
+                            </select>
+                            <label for="urlInputs">Посилання на інші магазини:</label>
+                            <div class="url-inputs" id="urlInputs">
+                                <div class="url-input-row">
+                                    <label style="display:none">Adapter</label>
+                                    <select class="adapter-select" aria-label="adapter-select"></select>
+                                    <label style="display:none">Category</label>
+                                    <select class="category-select" aria-label="category-select"></select>
+                                    <button type="button" class="btn-remove" onclick="removeUrlRow(this)">Видалити</button>
+                                </div>
+                            </div>
+                            <button type="button" class="btn-add" onclick="addUrlRow()">+ Додати ще посилання</button>
+                        </div>
+                        <button type="submit" class="btn-submit" id="submitBtn">Перевірити відсутні</button>
+                    </form>
+                </div>
 
-        <div class="input-section">
-            <form id="compareForm">
-                <div class="form-group">
-                    <label for="category">Категорія:</label>
-                    <select id="category" style="margin-bottom:10px; padding: 12px; border: 2px solid #e0e0e0; border-radius: 5px; font-size: 1em;">
-                        <option value="">(не вказано)</option>
-                        <!-- additional options will be injected by JS -->
-                    </select>
-                    <label for="urlInputs">Посилання на інші магазини:</label>
-                    <div class="url-inputs" id="urlInputs">
-                        <!-- Each row contains two dropdowns: adapter and category -->
-                        <div class="url-input-row">
-                            <label style="display:none">Adapter</label>
-                            <select class="adapter-select" aria-label="adapter-select"></select>
-                            <label style="display:none">Category</label>
-                            <select class="category-select" aria-label="category-select"></select>
-                            <button type="button" class="btn-remove" onclick="removeUrlRow(this)">Видалити</button>
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>Парсинг товарів із посилань...</p>
+                </div>
+
+                <div class="error" id="error"></div>
+            </section>
+
+            <section class="right-column">
+                <div class="reference-panel panel">
+                    <div class="panel-header">
+                        <div>
+                            <h2>📦 Товари референсного каталогу</h2>
+                            <p id="referenceSummary" class="panel-subtitle">Оберіть категорію, щоб побачити товари справочника.</p>
+                        </div>
+                        <input type="text" id="referenceSearch" placeholder="Пошук у списку товарів" />
+                    </div>
+                    <div id="referenceLoading" class="reference-loading">
+                        <div class="spinner small"></div>
+                        <p>Завантаження товарів...</p>
+                    </div>
+                    <div id="referenceError" class="reference-error"></div>
+                    <div id="referenceList" class="reference-list">
+                        <p class="no-data">Оберіть категорію, щоб побачити товари справочника.</p>
+                    </div>
+                    <div id="referenceSentinel" class="reference-sentinel"></div>
+                </div>
+
+                <div class="results-section results-panel" id="results">
+                    <div class="results-container">
+                        <div class="stats" id="stats"></div>
+
+                        <h2>🔎 Знайдені товари, яких немає на prohockey.com.ua</h2>
+                        <div id="allProductsContainer" class="table-wrapper">
+                            <p class="no-data">Результатів немає</p>
                         </div>
                     </div>
-                    <button type="button" class="btn-add" onclick="addUrlRow()">+ Додати ще посилання</button>
                 </div>
-
-                <button type="submit" class="btn-submit" id="submitBtn">Перевірити відсутні</button>
-            </form>
-        </div>
-
-        <div class="loading" id="loading">
-            <div class="spinner"></div>
-            <p>Парсинг товарів із посилань...</p>
-        </div>
-
-        <div class="error" id="error"></div>
-
-        <div class="results-section" id="results">
-            <div class="results-container">
-                <div class="stats" id="stats"></div>
-
-                <h2>🔎 Знайдені товари, яких немає на prohockey.com.ua</h2>
-                <div id="allProductsContainer" class="table-wrapper">
-                    <p class="no-data">Результатів немає</p>
-                </div>
-            </div>
+            </section>
         </div>
     </div>
 
     <script>
-        // store adapters cache
+        const REFERENCE_PAGE_SIZE = 20;
+        const referenceCache = {};
+        const referenceState = {
+            category: '',
+            search: '',
+            nextPage: 1,
+            hasMore: true,
+            loading: false,
+        };
+        let referenceDebounceTimer;
+        let referenceObserver;
         let _adapters = [];
 
         async function initialize() {
             await loadAdapters();
-            // load reference categories (prohockey) into top-level category select
             await loadReferenceCategories();
-            // populate existing rows
+            await setupCompareRows();
+            setupReferencePanel();
+        }
+
+        async function setupCompareRows() {
             const rows = document.querySelectorAll('.url-input-row');
             for (const row of rows) {
                 const adapterSel = row.querySelector('.adapter-select');
                 const catSel = row.querySelector('.category-select');
                 populateAdapterOptions(adapterSel);
-                // when adapter changes, load categories
                 adapterSel.addEventListener('change', () => onAdapterChange(adapterSel, catSel));
-                // trigger initial load: if there's at least one adapter option, select the first real option (skip placeholder)
                 if (adapterSel.options.length > 1) {
-                    adapterSel.selectedIndex = 1; // skip placeholder
+                    adapterSel.selectedIndex = 1;
                     await onAdapterChange(adapterSel, catSel);
                 }
             }
@@ -418,7 +629,6 @@
                 const data = await resp.json();
                 const cats = data.categories || [];
                 const sel = document.getElementById('category');
-                // clear existing except the first default option
                 sel.querySelectorAll('option:not([value=""])').forEach(o => o.remove());
                 cats.forEach(c => {
                     const opt = document.createElement('option');
@@ -437,7 +647,6 @@
         }
 
         function populateAdapterOptions(select) {
-            // clear
             select.innerHTML = '';
             const placeholder = document.createElement('option');
             placeholder.value = '';
@@ -446,7 +655,6 @@
             _adapters.forEach(a => {
                 const opt = document.createElement('option');
                 opt.value = a.name;
-                // show first domain if present for readability
                 opt.textContent = a.name + (a.domains && a.domains.length ? ' (' + a.domains[0] + ')' : '');
                 select.appendChild(opt);
             });
@@ -497,15 +705,213 @@
             const catSel = newRow.querySelector('.category-select');
             populateAdapterOptions(adapterSel);
             adapterSel.addEventListener('change', () => onAdapterChange(adapterSel, catSel));
-            // if there's at least one adapter, select first and load categories
             if (adapterSel.options.length > 1) {
-                adapterSel.selectedIndex = 1; // skip placeholder
+                adapterSel.selectedIndex = 1;
                 onAdapterChange(adapterSel, catSel);
             }
         }
 
         function removeUrlRow(button) {
             button.parentElement.remove();
+        }
+
+        function setupReferencePanel() {
+            const searchInput = document.getElementById('referenceSearch');
+            const categorySelect = document.getElementById('category');
+            searchInput.addEventListener('input', () => {
+                clearTimeout(referenceDebounceTimer);
+                referenceDebounceTimer = setTimeout(handleReferenceFilterChange, 350);
+            });
+            categorySelect.addEventListener('change', handleReferenceFilterChange);
+            bindReferenceObserver();
+            handleReferenceFilterChange();
+        }
+
+        function handleReferenceFilterChange() {
+            const category = document.getElementById('category').value;
+            const search = document.getElementById('referenceSearch').value.trim();
+            referenceState.category = category;
+            referenceState.search = search;
+            referenceState.nextPage = 1;
+            referenceState.hasMore = true;
+            referenceState.loading = false;
+            clearReferenceList();
+            hideReferenceError();
+            updateReferenceSummary(null);
+            if (!category) {
+                referenceState.hasMore = false;
+                showReferencePlaceholder('Оберіть категорію, щоб побачити товари справочника.');
+                return;
+            }
+            showReferencePlaceholder('Дані завантажуються...');
+            loadReferencePage(1);
+        }
+
+        function clearReferenceList() {
+            document.getElementById('referenceList').innerHTML = '';
+        }
+
+        function showReferencePlaceholder(message) {
+            const list = document.getElementById('referenceList');
+            list.innerHTML = `<p class="no-data">${escapeHtml(message)}</p>`;
+        }
+
+        function updateReferenceSummary(total = null) {
+            const summary = document.getElementById('referenceSummary');
+            const parts = [];
+            if (referenceState.category) {
+                parts.push(`Категорія: ${referenceState.category}`);
+            }
+            if (total !== null && total !== undefined) {
+                parts.push(`Всього: ${total}`);
+            }
+            summary.textContent = parts.join(' • ') || 'Оберіть категорію, щоб побачити товари справочника.';
+        }
+
+        function bindReferenceObserver() {
+            const sentinel = document.getElementById('referenceSentinel');
+            if (!sentinel || typeof IntersectionObserver === 'undefined') return;
+            if (referenceObserver) {
+                referenceObserver.disconnect();
+            }
+            referenceObserver = new IntersectionObserver(entries => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting && referenceState.hasMore && !referenceState.loading && referenceState.category) {
+                        loadReferencePage(referenceState.nextPage);
+                    }
+                });
+            }, {
+                root: null,
+                rootMargin: '200px',
+                threshold: 0.1,
+            });
+            referenceObserver.observe(sentinel);
+        }
+
+        function getReferenceCacheKey(category, search) {
+            return `${category}||${search}`;
+        }
+
+        function ensureReferenceCache(key) {
+            if (!referenceCache[key]) {
+                referenceCache[key] = {
+                    pages: {},
+                    total: null,
+                };
+            }
+            return referenceCache[key];
+        }
+
+        async function loadReferencePage(pageToLoad) {
+            if (!referenceState.category || referenceState.loading || !referenceState.hasMore) {
+                return;
+            }
+            const cacheKey = getReferenceCacheKey(referenceState.category, referenceState.search);
+            const cacheEntry = ensureReferenceCache(cacheKey);
+            const cachedItems = cacheEntry.pages[pageToLoad];
+            if (cachedItems) {
+                appendReferenceItems(cachedItems);
+                const total = cacheEntry.total ?? null;
+                referenceState.hasMore = total !== null ? (pageToLoad * REFERENCE_PAGE_SIZE) < total : true;
+                referenceState.nextPage = pageToLoad + 1;
+                updateReferenceSummary(total);
+                return;
+            }
+            referenceState.loading = true;
+            showReferenceLoading(true);
+            hideReferenceError();
+            try {
+                const params = new URLSearchParams();
+                params.set('category', referenceState.category);
+                params.set('page', pageToLoad.toString());
+                params.set('page_size', REFERENCE_PAGE_SIZE.toString());
+                if (referenceState.search) {
+                    params.set('q', referenceState.search);
+                }
+                const response = await fetch(`/api/reference-products?${params.toString()}`);
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Помилка при завантаженні товарів');
+                }
+                const items = data.items || [];
+                cacheEntry.pages[pageToLoad] = items;
+                cacheEntry.total = data.total ?? 0;
+                referenceState.hasMore = data.has_more !== false && (pageToLoad * REFERENCE_PAGE_SIZE) < cacheEntry.total;
+                referenceState.nextPage = pageToLoad + 1;
+                updateReferenceSummary(cacheEntry.total);
+                if (!cacheEntry.total) {
+                    showReferencePlaceholder(referenceState.search ? 'За вашим запитом нічого не знайдено.' : 'У цій категорії поки що немає товарів.');
+                    return;
+                }
+                if (items.length === 0 && pageToLoad === 1) {
+                    showReferencePlaceholder(referenceState.search ? 'За вашим запитом нічого не знайдено.' : 'У цій категорії поки що немає товарів.');
+                } else {
+                    appendReferenceItems(items);
+                }
+            } catch (error) {
+                showReferenceError(error.message || 'Не вдалося завантажити товари зі справочника.');
+                referenceState.hasMore = false;
+            } finally {
+                referenceState.loading = false;
+                showReferenceLoading(false);
+            }
+        }
+
+        function appendReferenceItems(items) {
+            if (!items || !items.length) return;
+            const list = document.getElementById('referenceList');
+            const placeholder = list.querySelector('.no-data');
+            if (placeholder) {
+                placeholder.remove();
+            }
+            const fragment = document.createDocumentFragment();
+            items.forEach(item => fragment.appendChild(createReferenceCard(item)));
+            list.appendChild(fragment);
+        }
+
+        function createReferenceCard(item) {
+            const card = document.createElement('article');
+            card.className = 'reference-card';
+            const title = escapeHtml(item.name || '—');
+            const source = escapeHtml(item.source_site || 'prohockey.com.ua');
+            const priceText = escapeHtml(
+                item.price != null
+                    ? `${item.price} ${item.currency || ''}`.trim()
+                    : item.price_raw || '—'
+            );
+            card.innerHTML = `
+                <div class="reference-card-body">
+                    <div>
+                        <h3>${title}</h3>
+                        <p class="reference-card-source">${source}</p>
+                    </div>
+                    <div class="reference-card-price">${priceText}</div>
+                </div>
+            `;
+            if (item.url) {
+                const link = document.createElement('a');
+                link.className = 'reference-card-link';
+                link.href = item.url;
+                link.target = '_blank';
+                link.rel = 'noreferrer';
+                link.textContent = 'Переглянути';
+                card.appendChild(link);
+            }
+            return card;
+        }
+
+        function showReferenceLoading(show) {
+            document.getElementById('referenceLoading').classList.toggle('visible', show);
+        }
+
+        function showReferenceError(message) {
+            const errorNode = document.getElementById('referenceError');
+            errorNode.textContent = message;
+            errorNode.classList.add('visible');
+        }
+
+        function hideReferenceError() {
+            document.getElementById('referenceError').classList.remove('visible');
         }
 
         document.addEventListener('DOMContentLoaded', initialize);
@@ -554,14 +960,12 @@
         });
 
         function displayResults(data) {
-            // Показываем статистику
             const statsHtml = `
-                <div class="stats-text">� Перевірено посилань: <strong>${data.total_urls || 0}</strong></div>
+                <div class="stats-text">🧮 Перевірено посилань: <strong>${data.total_urls || 0}</strong></div>
                 <div class="stats-text">🚫 Відсутніх товарів: <strong>${data.total || 0}</strong></div>
             `;
             document.getElementById('stats').innerHTML = statsHtml;
 
-            // Отображаем результати
             const container = document.getElementById('allProductsContainer');
             if (data.missing && data.missing.length > 0) {
                 container.innerHTML = createTableWithStatus(data.missing);
