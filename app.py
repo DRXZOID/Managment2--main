@@ -53,6 +53,21 @@ def _item_to_dict(item):
     }
 
 
+def _reference_item_to_dict(item):
+    price_value, currency = parse_price_value(item.price_raw)
+    return {
+        "name": item.name,
+        "price": price_value,
+        "currency": currency,
+        "url": item.url,
+        "source_site": item.source_site,
+        "price_raw": item.price_raw,
+    }
+
+
+
+
+
 def _decode_escapes(s):
     # only attempt decode when it looks like an escaped unicode sequence
     if not isinstance(s, str) or "\\u" not in s:
@@ -101,6 +116,57 @@ def categories_list():
     return jsonify({'categories': cats})
 
 
+@app.route('/api/reference-products', methods=['GET'])
+def reference_products():
+    category = (request.args.get('category') or '').strip()
+    if not category:
+        return jsonify({'error': 'category query parameter is required'}), 400
+
+    search_query = (request.args.get('q') or '').strip().lower()
+    try:
+        page = int(request.args.get('page', 1))
+    except ValueError:
+        page = 1
+    try:
+        page_size = int(request.args.get('page_size', 20))
+    except ValueError:
+        page_size = 20
+
+    page = max(1, page)
+    page_size = max(1, min(page_size, 100))
+
+    reference = registry.reference_adapter()
+    builder = ReferenceCatalogBuilder(reference, default_client)
+    try:
+        catalog = builder.build([category])
+    except Exception as exc:
+        print(f"reference_products failed: {exc}")
+        return jsonify({'error': 'failed to load reference catalog'}), 500
+
+    filtered = []
+    for item in catalog:
+        if search_query:
+            name = (item.name or '').lower()
+            source = (item.source_site or '').lower()
+            if search_query not in name and search_query not in source:
+                continue
+        filtered.append(item)
+
+    total = len(filtered)
+    start = (page - 1) * page_size
+    end = start + page_size
+    page_items = filtered[start:end]
+    data = [_reference_item_to_dict(item) for item in page_items]
+
+    return jsonify({
+        'items': data,
+        'total': total,
+        'page': page,
+        'per_page': page_size,
+        'has_more': end < total,
+    })
+
+
 @app.route('/api/check', methods=['POST'])
 def check_missing():
     print("=" * 50)
@@ -139,79 +205,8 @@ def check_missing():
         print(f"  -> adapter: {adapter.name}")
         others = adapter.scrape_url(default_client, url)
         scanned += len(others)
-        for p in others:
-            entry = _item_to_dict(p)
-            # default values
-            entry['status'] = 2
-            entry['status_reason'] = 'no_ref'
-            entry['ref'] = None
 
-            if not product_exists_on_main(p.name):
-                # no match on main site
-                entry['status'] = 2
-                entry['status_reason'] = 'no_ref'
-                missing.append(entry)
-                continue
-
-            # try to find reference items by normalized title
-            key = normalize_title(p.name)
-            refs = ref_index.get(key, [])
-            if not refs:
-                entry['status'] = 2
-                entry['status_reason'] = 'no_ref'
-                missing.append(entry)
-                continue
-
-            # parse test price
-            test_price, test_currency = parse_price_value(p.price_raw)
-            if test_price is None:
-                entry['status'] = 2
-                entry['status_reason'] = 'invalid_price'
-                missing.append(entry)
-                continue
-
-            # parse reference prices and select minimal valid price
-            valid_refs = []
-            for r in refs:
-                ref_price, ref_curr = parse_price_value(r.price_raw)
-                if ref_price is not None:
-                    valid_refs.append((ref_price, ref_curr, r))
-
-            if not valid_refs:
-                entry['status'] = 2
-                entry['status_reason'] = 'invalid_ref_price'
-                missing.append(entry)
-                continue
-
-            # select minimal price among refs
-            valid_refs.sort(key=lambda x: x[0])
-            ref_price, ref_curr, ref_item = valid_refs[0]
-
-            # currency must match strictly
-            if (ref_curr or '').strip() != (test_currency or '').strip():
-                entry['status'] = 2
-                entry['status_reason'] = 'currency_mismatch'
-                missing.append(entry)
-                continue
-
-            # decide status based on numeric comparison
-            if ref_price <= test_price:
-                entry['status'] = 0
-                entry['status_reason'] = 'ref_leq_test'
-            else:
-                entry['status'] = 1
-                entry['status_reason'] = 'ref_gt_test'
-
-            # include reference snippet
-            entry['ref'] = {
-                'name': ref_item.name,
-                'price': ref_price,
-                'currency': ref_curr,
-                'url': ref_item.url,
-                'source_site': ref_item.source_site,
-            }
-
-            missing.append(entry)
+    missing.append(product_exists_on_main(main_products, others))
 
     return jsonify({
         'missing': missing,

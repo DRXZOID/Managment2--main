@@ -3,6 +3,7 @@ import time
 import random
 import hashlib
 import requests
+from datetime import datetime, timedelta
 
 
 class HttpClient:
@@ -88,6 +89,72 @@ class HttpClient:
     def _log(self, message):
         if self.verbose:
             print(message)
+
+    def get_cache_mtime(self, url, as_datetime=False):
+        """
+        Return the last modification time (save time) of the cache file for the given URL.
+
+        Args:
+            url (str): URL for which to look up the cache file.
+            as_datetime (bool): if True return a datetime.datetime, otherwise a float (POSIX timestamp).
+
+        Returns:
+            float|datetime.datetime|None: modification time or None if the cache is missing.
+        """
+        cache_path = self._get_cache_path(url)
+        if not os.path.exists(cache_path):
+            return None
+        try:
+            mtime = os.path.getmtime(cache_path)
+        except OSError:
+            return None
+        if as_datetime:
+            return datetime.fromtimestamp(mtime)
+        return mtime
+
+    def _human_readable_age(self, seconds):
+        """Convert seconds to a human readable age like '2 days, 3 hours ago'."""
+        seconds = int(round(seconds))
+        if seconds <= 0:
+            return 'just now'
+        parts = []
+        days, rem = divmod(seconds, 86400)
+        hours, rem = divmod(rem, 3600)
+        minutes, secs = divmod(rem, 60)
+        if days:
+            parts.append(f"{days} {'day' if days == 1 else 'days'}")
+        if hours:
+            parts.append(f"{hours} {'hour' if hours == 1 else 'hours'}")
+        if minutes and not parts:
+            # only include minutes if no days/hours (to keep it compact)
+            parts.append(f"{minutes} {'minute' if minutes == 1 else 'minutes'}")
+        if not parts and secs:
+            parts.append(f"{secs} {'second' if secs == 1 else 'seconds'}")
+        # show up to two largest parts
+        display = ', '.join(parts[:2])
+        return f"{display} ago"
+
+    def get_cache_age(self, url, as_timedelta=False, human_readable=True):
+        """
+        Return the age of the cached file for a URL.
+
+        Args:
+            url (str): URL for which to compute cache age.
+            as_timedelta (bool): if True return a datetime.timedelta. Mutually compatible with human_readable.
+            human_readable (bool): if True return a human-readable string (e.g. '3 hours ago'). If False and as_timedelta is False, return age in seconds (float).
+
+        Returns:
+            str|datetime.timedelta|float|None: age representation or None if cache is missing.
+        """
+        mtime = self.get_cache_mtime(url, as_datetime=False)
+        if mtime is None:
+            return None
+        age_seconds = time.time() - mtime
+        if as_timedelta:
+            return timedelta(seconds=age_seconds)
+        if human_readable:
+            return self._human_readable_age(age_seconds)
+        return age_seconds
 
     def safe_get(self, url, method='GET', use_cache=True, session=None, **kwargs):
         session = session or self.session
