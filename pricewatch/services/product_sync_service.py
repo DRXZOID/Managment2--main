@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 
 from typing import Any, Dict, List
 from urllib.parse import urljoin
@@ -19,6 +20,7 @@ from pricewatch.db.repositories import (
 from pricewatch.services.utils import resolve_adapter_for_store
 from pricewatch.db.repositories.category_repository import get_category
 from __init__ import default_client
+from pricewatch.services.validation_diagnostics import ensure_metadata, record_validation_error
 
 logger = logging.getLogger(__name__)
 VALIDATION_ERRORS_SAMPLE_LIMIT = 10
@@ -126,8 +128,32 @@ class ProductSyncService:
                 if isinstance(explicit_price, (int, float)):
                     parsed_price = float(explicit_price)
                 elif isinstance(explicit_price, str):
-                    # allow numeric strings
-                    parsed_price = float(explicit_price.strip()) if explicit_price.strip() else None
+                    # first: try direct numeric conversion (covers "12999")
+                    stripped = explicit_price.strip()
+                    if stripped:
+                        try:
+                            parsed_price = float(stripped)
+                        except Exception:
+                            # direct conversion failed -> try cleaned numeric conversion
+                            try:
+                                cleaned = stripped.replace('\u00A0', '').replace(' ', '').replace(',', '.')
+                                m = re.search(r"-?\d+(?:\.\d+)?", cleaned)
+                                if m:
+                                    parsed_price = float(m.group(0))
+                                    # try to capture currency from the original explicit string
+                                    try:
+                                        _, maybe_curr = parse_price_value(explicit_price)
+                                        if maybe_curr:
+                                            parsed_currency = maybe_curr
+                                    except Exception:
+                                        pass
+                                else:
+                                    # final fallback: use parse_price_value to also capture currency
+                                    parsed_price, parsed_currency = parse_price_value(explicit_price)
+                            except Exception:
+                                parsed_price, parsed_currency = None, None
+                    else:
+                        parsed_price = None
                 else:
                     # try generic conversion
                     parsed_price = float(explicit_price)
@@ -135,11 +161,19 @@ class ProductSyncService:
                 # couldn't convert explicit price -> ignore and fallback to price_raw
                 parsed_price = None
 
+        # If explicit price (including parsed from explicit string) didn't produce a value,
+        # try parse_price_value on price_raw as fallback
         if parsed_price is None:
             try:
-                parsed_price, parsed_currency = parse_price_value(price_raw)
+                parsed_price_from_raw, parsed_currency_from_raw = parse_price_value(price_raw)
             except Exception:
-                parsed_price, parsed_currency = None, None
+                parsed_price_from_raw, parsed_currency_from_raw = None, None
+            # if we previously obtained a currency from parsing explicit_price, prefer it for now
+            if parsed_price_from_raw is not None:
+                parsed_price = parsed_price_from_raw
+                # only set currency from raw if none set yet
+                if not parsed_currency:
+                    parsed_currency = parsed_currency_from_raw
 
         price = parsed_price
         # currency: explicit override takes precedence
@@ -196,7 +230,6 @@ class ProductSyncService:
                         "Product skipped because name is missing",
                         getattr(adapter, "name", None),
                         store,
-                        category,
                         product_name=None,
                     )
                     continue
@@ -211,7 +244,6 @@ class ProductSyncService:
                         "Product skipped because product_url is missing",
                         getattr(adapter, "name", None),
                         store,
-                        category,
                         product_name=name,
                         product_url=normalized.get("raw_product_url"),
                         source_url=normalized.get("source_url"),
@@ -284,10 +316,10 @@ class ProductSyncService:
         return list_products_by_category(self.session, category_id)
 
     def _ensure_metadata(self, metadata: Dict[str, Any]) -> None:
-        metadata.setdefault("skipped_invalid_products", 0)
+        # use shared helper to ensure metadata shape for products
+        ensure_metadata(metadata, skipped_key="skipped_invalid_products", sample_limit=VALIDATION_ERRORS_SAMPLE_LIMIT)
+        # preserve legacy key used by product sync
         metadata.setdefault("skipped_missing_url", 0)
-        metadata.setdefault("validation_error_counts", {})
-        metadata.setdefault("validation_errors_sample", [])
 
     def _log_skipped_product(
         self,
@@ -321,11 +353,12 @@ class ProductSyncService:
         message: str,
         adapter_name: str | None,
         store: Store,
-        category: Category,
+        category: Category | None = None,
         product_name: str | None = None,
         product_url: str | None = None,
         source_url: str | None = None,
     ) -> None:
+        # keep logging behaviour, delegate counters+samples to shared helper
         self._ensure_metadata(metadata)
         self._log_skipped_product(
             reason=reason,
@@ -337,26 +370,25 @@ class ProductSyncService:
             product_url=product_url,
             source_url=source_url,
         )
-        metadata["skipped_invalid_products"] += 1
-        counts = metadata["validation_error_counts"]
-        counts[reason] = counts.get(reason, 0) + 1
-        samples = metadata["validation_errors_sample"]
-        if len(samples) < VALIDATION_ERRORS_SAMPLE_LIMIT:
-            entry = {
-                "type": reason,
-                "message": message,
-            }
-            if product_name is not None:
-                entry["product_name"] = product_name
-            if product_url is not None:
-                entry["product_url"] = product_url
-            if source_url is not None:
-                entry["source_url"] = source_url
-            if adapter_name is not None:
-                entry["adapter_name"] = adapter_name
-            if getattr(category, "id", None) is not None:
-                entry["category_id"] = getattr(category, "id", None)
-            if getattr(category, "name", None):
-                entry["category_name"] = category.name
-            samples.append(entry)
+        extra = {}
+        if product_name is not None:
+            extra["product_name"] = product_name
+        if product_url is not None:
+            extra["product_url"] = product_url
+        if source_url is not None:
+            extra["source_url"] = source_url
+        if adapter_name is not None:
+            extra["adapter_name"] = adapter_name
+        if category is not None and getattr(category, "id", None) is not None:
+            extra["category_id"] = getattr(category, "id", None)
+        if category is not None and getattr(category, "name", None):
+            extra["category_name"] = category.name
 
+        record_validation_error(
+            metadata,
+            reason,
+            message,
+            extra_fields=extra,
+            skipped_key="skipped_invalid_products",
+            sample_limit=VALIDATION_ERRORS_SAMPLE_LIMIT,
+        )

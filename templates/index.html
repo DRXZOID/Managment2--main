@@ -3,1355 +3,329 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Порівняння товарів</title>
+    <title>Pricewatch – Головна</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        :root {
+            --bg: #f6f4ff;
+            --panel: #ffffff;
+            --accent: #5b5bd6;
+            --accent-dark: #403ea3;
+            --text: #1f2343;
+            --muted: #6b6f85;
+            --border: #e4e7f1;
         }
-
+        * { box-sizing: border-box; }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        header {
-            text-align: center;
-            color: black;
-            margin-bottom: 40px;
-        }
-
-        h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-        }
-
-        .subtitle {
-            font-size: 1.1em;
-            opacity: 0.9;
-        }
-
-        .main-grid {
-            display: grid;
-            gap: 24px;
-            grid-template-columns: 30% 1fr;
-            align-items: flex-start;
-        }
-
-        .left-column {
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-
-        .right-column {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
-        }
-
-        .panel {
-            background: white;
-            border-radius: 14px;
-            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.15);
-            padding: 24px;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-        }
-
-        .panel-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 14px;
-            flex-wrap: wrap;
-        }
-
-        .panel-subtitle {
-            margin-top: 6px;
-            color: #555;
-            font-size: 0.95em;
-        }
-
-        .results-panel {
-            background: transparent;
-        }
-
-        .results-header-actions {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            flex-wrap: wrap;
-        }
-
-        #resultsSearch {
-            min-width: 200px;
-            border-radius: 8px;
-            border: 2px solid #e0e0e0;
-            padding: 10px 14px;
-            font-size: 1em;
-            transition: border-color 0.3s, box-shadow 0.3s;
-        }
-
-        #resultsSearch:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.25);
-        }
-
-        .results-hint {
-            font-size: 0.9em;
-            color: #4c4c4c;
-            background: #f5f7ff;
-            border-left: 4px solid #7f9cf5;
-            padding: 10px 14px;
-            border-radius: 8px;
-        }
-
-        .summary-section {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .summary-badges {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-
-        .summary-badge {
-            padding: 6px 12px;
-            border-radius: 999px;
-            font-size: 0.9em;
-            font-weight: 600;
-            background: #eef2ff;
-            color: #1d1d1d;
-        }
-
-        .summary-badge-matched { background: #ecfdf5; color: #047857; }
-        .summary-badge-ambiguous { background: #fffbeb; color: #92400e; }
-        .summary-badge-no_match { background: #fef2f2; color: #b91c1c; }
-
-        .results-groups {
-            display: flex;
-            flex-direction: column;
-            gap: 18px;
-        }
-
-        .results-group {
-            border: 1px solid #e6e9fb;
-            border-radius: 12px;
-            padding: 16px;
-            background: #fff;
-        }
-
-        .results-group[hidden] {
-            display: none;
-        }
-
-        .results-group-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-        }
-
-        .results-group-title {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-weight: 600;
-            color: #1d1d1d;
-        }
-
-        .results-group-count {
-            font-size: 0.9em;
-            color: #4c51bf;
-            background: #eef2ff;
-            padding: 4px 10px;
-            border-radius: 999px;
-        }
-
-        .group-toggle {
-            border: none;
-            background: #eef2ff;
-            color: #4c51bf;
-            padding: 6px 12px;
-            border-radius: 999px;
-            font-weight: 600;
-            cursor: pointer;
-        }
-
-        .group-toggle:hover {
-            background: #d6dcff;
-        }
-
-        .results-group.collapsed .results-group-list {
-            display: none;
-        }
-
-        .results-group-list {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .site-group {
-            border: 1px solid #f1f1f1;
-            border-radius: 10px;
-            padding: 12px;
-            background: #fafbff;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .site-group-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-weight: 600;
-            color: #1d1d1d;
-        }
-
-        .site-group-count {
-            font-size: 0.85em;
-            background: #fff;
-            padding: 4px 10px;
-            border-radius: 999px;
-            color: #4c51bf;
-        }
-
-        .site-group-body {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-
-        .result-card {
-            border-radius: 12px;
-            border: 1px solid #e2e9ff;
-            padding: 16px;
-            background: #fff;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            transition: box-shadow 0.2s ease;
-        }
-
-        .result-card:hover {
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
-        }
-
-        .result-card[data-accent="green"] {
-            border-color: #68d391;
-            background: #f0fff4;
-        }
-
-        .result-card[data-accent="yellow"] {
-            border-color: #f6e05e;
-            background: #fffbeb;
-        }
-
-        .result-card[data-accent="red"] {
-            border-color: #f56565;
-            background: #fff5f5;
-        }
-
-        .result-card[data-accent="blue"] {
-            border-color: #7f9cf5;
-            background: #f5f7ff;
-        }
-
-        .result-card[data-accent="white"] {
-            border-color: #e2e8f0;
-            background: #fff;
-        }
-
-        .result-card-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            gap: 12px;
-        }
-
-        .result-status-pill {
-            font-size: 0.9em;
-            padding: 4px 10px;
-            border-radius: 999px;
-            background: rgba(31, 41, 55, 0.08);
-            color: #1f2937;
-            font-weight: 600;
-        }
-
-        .result-card-reason {
-            font-size: 0.85em;
-            color: #6b7280;
-        }
-
-        .result-entities {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 14px;
-        }
-
-        .result-entity {
-            background: rgba(255, 255, 255, 0.9);
-            border-radius: 10px;
-            padding: 12px;
-            border: 1px dashed rgba(102, 126, 234, 0.3);
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        .result-entity h4 {
-            font-size: 0.95em;
-            color: #4c51bf;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-        }
-
-        .result-entity-name {
-            font-weight: 600;
-            color: #1d1d1d;
-        }
-
-        .result-entity-meta {
-            font-size: 0.9em;
-            color: #5c6373;
-        }
-
-        .result-entity-price {
-            font-weight: 700;
-            color: #2c6dfc;
-        }
-
-        .result-card-link {
-            align-self: flex-start;
-            font-weight: 600;
-            color: #2c6dfc;
-            text-decoration: none;
-        }
-
-        .result-card-link:hover {
-            text-decoration: underline;
-        }
-
-        .result-card-candidates {
-            font-size: 0.9em;
-            color: #92400e;
-            background: #fef3c7;
-            padding: 6px 10px;
-            border-radius: 8px;
-            align-self: flex-start;
-        }
-
-        .results-summary-inline {
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-        }
-
-        .results-summary-inline .stats-text {
             margin: 0;
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
         }
-
-        .spinner.small {
-            width: 30px;
-            height: 30px;
-            border-width: 3px;
+        header {
+            background: linear-gradient(135deg, #7f7ff5, #8ec5fc);
+            padding: 32px 24px;
+            color: white;
         }
-
-        .results-section {
-            display: none;
+        header h1 {
+            margin: 0;
+            font-size: 2.2rem;
         }
-
-        .results-section.visible {
-            display: block;
-        }
-
-        .input-section {
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            width: 100%;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        label {
-            display: block;
-            margin-bottom: 8px;
-            color: #333;
+        header p { margin: 8px 0 16px; max-width: 720px; }
+        header a {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(255,255,255,0.15);
+            color: white;
+            text-decoration: none;
+            padding: 8px 18px;
+            border-radius: 999px;
             font-weight: 600;
         }
-
-        .url-inputs {
+        main { padding: 32px 24px 64px; max-width: 1200px; margin: 0 auto; }
+        .panel {
+            background: var(--panel);
+            border-radius: 18px;
+            padding: 24px;
+            box-shadow: 0 15px 35px rgba(82,86,133,0.12);
+            margin-bottom: 24px;
+        }
+        .panel h2 { margin-top: 0; }
+        .grid-two {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 24px;
+        }
+        label { font-weight: 600; display: block; margin-bottom: 6px; }
+        select {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            font-size: 0.95rem;
+        }
+        .categories {
             display: flex;
             flex-direction: column;
-            gap: 10px;
-            margin-bottom: 15px;
-        }
-
-        .url-input-row {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            align-items: center;
-        }
-
-        input[type="text"],
-        select {
-            flex: 1;
+            gap: 12px;
+            max-height: 320px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 12px;
             padding: 12px;
-            border: 2px solid #e0e0e0;
-            border-radius: 5px;
-            font-size: 1em;
-            transition: border-color 0.3s;
+            background: #fafaff;
         }
-
-        input[type="text"]:focus,
-        select:focus {
-            outline: none;
-            border-color: #667eea;
-        }
-
-        .input-section select {
-            max-width: 300px;
-        }
-
-        button {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 5px;
-            font-size: 1em;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .btn-add {
-            background: #4CAF50;
-            color: white;
-            align-self: flex-start;
-        }
-
-        .btn-add:hover {
-            background: #45a049;
-            transform: translateY(-2px);
-        }
-
-        .btn-remove {
-            background: #f44336;
-            color: white;
-            padding: 10px 16px;
-            font-size: 0.9em;
-        }
-
-        .btn-remove:hover {
-            background: #da190b;
-        }
-
-        .btn-submit {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            width: 100%;
-            padding: 15px;
-            font-size: 1.1em;
-            margin-top: 20px;
-        }
-
-        .btn-submit:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
-        }
-
-        .btn-submit:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 20px;
-            color: #667eea;
-            display: none;
-        }
-
-        .loading.visible {
-            display: block;
-        }
-
-        .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #667eea;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 10px;
-        }
-
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        .error {
-            background: #ffebee;
-            color: #c62828;
-            padding: 15px;
-            border-radius: 5px;
-            margin-top: 15px;
-            border-left: 4px solid #c62828;
-            display: none;
-        }
-
-        .error.visible {
-            display: block;
-        }
-
-        .stats {
-            background: #f0f4ff;
-            padding: 20px;
-            border-radius: 5px;
-            margin-bottom: 20px;
-            border-left: 4px solid #667eea;
-        }
-
-        .stats-text {
-            font-size: 1.1em;
-            color: #333;
-            margin: 5px 0;
-        }
-
-        .stats-text strong {
-            color: #667eea;
-        }
-
-        .table-wrapper {
-            overflow-x: auto;
-            margin-bottom: 30px;
-        }
-
-        .group-block {
-            border: 1px solid #e6eefc;
-            padding: 12px;
-            margin-bottom: 18px;
-            border-radius: 6px;
-            background: #fbfeff;
-        }
-
-        .group-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: baseline;
-            margin-bottom: 8px;
-        }
-
-        .group-meta {
-            color: #555;
-            font-size: 0.95em;
-            margin-left: 10px;
-        }
-
-        .group-table th {
-            background: #eef6ff;
-            color: #1b3b6f;
-            padding: 8px 12px;
-        }
-
-        .group-table td {
+        .category-item {
             padding: 10px 12px;
-            border-bottom: 1px dashed #e6eefc;
+            border-radius: 10px;
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition: background 0.15s, border 0.15s;
         }
-
+        .category-item:hover { background: #f0f2ff; }
+        .category-item.active {
+            border-color: var(--accent);
+            background: rgba(91,91,214,0.08);
+        }
+        .status {
+            padding: 10px 14px;
+            border-radius: 10px;
+            background: #eef1ff;
+            color: var(--muted);
+            min-height: 44px;
+        }
+        .products-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 24px;
+        }
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 15px;
         }
-
-        th {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 15px;
+        th, td {
             text-align: left;
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.95rem;
+        }
+        th { font-weight: 600; color: var(--muted); }
+        .muted { color: var(--muted); font-size: 0.9rem; }
+        .link-btn {
+            color: var(--accent);
+            text-decoration: none;
             font-weight: 600;
-            border-radius: 5px 5px 0 0;
         }
-
-        td {
-            padding: 15px;
-            border-bottom: 1px solid #e0e0e0;
-            word-break: break-word;
-        }
-
-        tr:hover {
-            background: #f5f5f5;
-        }
-
-        tr:last-child td {
-            border-bottom: none;
-        }
-
-        .source-badge {
-            display: inline-block;
-            background: #e3f2fd;
-            color: #1976d2;
-            padding: 4px 8px;
-            border-radius: 3px;
-            font-size: 0.85em;
-            margin-right: 5px;
-            margin-bottom: 5px;
-        }
-
-        .no-data {
-            text-align: center;
-            padding: 30px;
-            color: #999;
-            background: #f5f5f5;
-            border-radius: 8px;
-            font-size: 1.05em;
-        }
-
-        @media (max-width: 1024px) {
-            .main-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        @media (max-width: 768px) {
-            h1 {
-                font-size: 1.8em;
-            }
-
-            .input-section {
-                padding: 20px;
-            }
-
-            table {
-                font-size: 0.9em;
-            }
-
-            td, th {
-                padding: 10px;
-            }
-
-            .reference-panel,
-            .reference-list {
-                min-height: auto;
-            }
-
-            .panel-header {
-                flex-direction: column;
-                align-items: flex-start;
-            }
-
-            #referenceSearch {
-                width: 100%;
-            }
+        .link-btn:hover { text-decoration: underline; }
+        @media (max-width: 640px) {
+            main { padding: 24px 16px; }
+            header { padding: 28px 18px; }
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="main-grid">
-            <section class="left-column">
-                <div class="input-section">
-                    <form id="compareForm">
-                        <div class="form-group">
-                            <label for="category">Категорія:</label>
-                            <select id="category">
-                                <option value="">(не вказано)</option>
-                                <!-- additional options will be injected by JS -->
-                            </select>
-                            <label for="urlInputs">Посилання на інші магазини:</label>
-                            <div class="url-inputs" id="urlInputs">
-                                <div class="url-input-row">
-                                    <label style="display:none">Adapter</label>
-                                    <select class="adapter-select" aria-label="adapter-select"></select>
-                                    <label style="display:none">Category</label>
-                                    <select class="category-select" aria-label="category-select"></select>
-                                    <button type="button" class="btn-remove" onclick="removeUrlRow(this)">Видалити</button>
-                                </div>
-                            </div>
-                            <button type="button" class="btn-add" onclick="addUrlRow()">+ Додати ще посилання</button>
-                        </div>
-                        <button type="submit" class="btn-submit" id="submitBtn">Перевірити відсутні</button>
-                    </form>
+    <header>
+        <h1>Pricewatch</h1>
+        <p>Переглядайте категорії та товари з бази без запуску скрапінгу. Для операційного управління перейти на сервісну сторінку.</p>
+        <a href="/service">🔧 Відкрити Service Console</a>
+    </header>
+    <main>
+        <section class="panel">
+            <h2>Вибір магазинів</h2>
+            <div class="grid-two">
+                <div>
+                    <label for="referenceStore">Референсний магазин</label>
+                    <select id="referenceStore"></select>
                 </div>
-
-                <div class="loading" id="loading">
-                    <div class="spinner"></div>
-                    <p>Парсинг товарів із посилань...</p>
+                <div>
+                    <label for="targetStore">Цільовий магазин</label>
+                    <select id="targetStore"></select>
                 </div>
+            </div>
+            <div id="mainStatus" class="status" style="margin-top:16px;">Завантажуємо магазини…</div>
+        </section>
 
-                <div class="error" id="error"></div>
-            </section>
-
-            <section class="right-column">
-                <div class="results-section">
-                    <div class="results-panel panel" id="results">
-                        <div class="panel-header">
-                            <div>
-                                <h2>🔎 Результати перевірки</h2>
-                                <p id="resultsSummary" class="panel-subtitle">Результати з'являться після перевірки.</p>
-                            </div>
-                            <div class="results-header-actions">
-                                <input type="text" id="resultsSearch" placeholder="Пошук у результатах" />
-                            </div>
-                        </div>
-                        <div class="panel-body">
-                            <p class="results-hint">Загальна підказка: скористайтеся пошуком за назвою для швидкого відбору позицій.</p>
-                            <div class="stats" id="stats"></div>
-                            <div class="summary-section">
-                                <p class="panel-subtitle">Підсумок по групах:</p>
-                                <div class="summary-badges" id="summaryBadges"></div>
-                            </div>
-                            <div class="results-groups" id="resultsGroups">
-                                <section class="results-group" data-group="matched" hidden>
-                                    <div class="results-group-header">
-                                        <div class="results-group-title">
-                                            <span>✅ Знайдені збіги</span>
-                                            <span class="results-group-count" id="matchedVisibleCount">0</span>
-                                        </div>
-                                        <button type="button" class="group-toggle" data-group="matched">Згорнути</button>
-                                    </div>
-                                    <div class="results-group-list" id="matchedList"></div>
-                                </section>
-                                <section class="results-group" data-group="ambiguous" hidden>
-                                    <div class="results-group-header">
-                                        <div class="results-group-title">
-                                            <span>⚖️ Невизначені</span>
-                                            <span class="results-group-count" id="ambiguousVisibleCount">0</span>
-                                        </div>
-                                    <button type="button" class="group-toggle" data-group="ambiguous">Згорнути</button>
-                                    </div>
-                                    <div class="results-group-list" id="ambiguousList"></div>
-                                </section>
-                                <section class="results-group" data-group="no_match" hidden>
-                                    <div class="results-group-header">
-                                        <div class="results-group-title">
-                                            <span>🚫 Відсутні</span>
-                                            <span class="results-group-count" id="no_matchVisibleCount">0</span>
-                                        </div>
-                                        <button type="button" class="group-toggle" data-group="no_match">Згорнути</button>
-                                    </div>
-                                    <div class="results-group-list" id="no_matchList"></div>
-                                </section>
-                            </div>
-                            <p class="no-data" id="resultsEmptyMessage" hidden>Немає результатів для відображення.</p>
-                        </div>
-                    </div>
+        <section class="panel">
+            <h2>Категорії</h2>
+            <div class="grid-two">
+                <div>
+                    <h3>Референс</h3>
+                    <div id="referenceCategories" class="categories"></div>
                 </div>
-            </section>
-        </div>
-    </div>
+                <div>
+                    <h3>Магазин для порівняння</h3>
+                    <div id="targetCategories" class="categories"></div>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>Товари</h2>
+            <div class="products-grid">
+                <div>
+                    <h3>Референс</h3>
+                    <p class="muted" id="referenceProductsHint">Оберіть категорію</p>
+                    <div class="products-table" id="referenceProducts"></div>
+                </div>
+                <div>
+                    <h3>Магазин для порівняння</h3>
+                    <p class="muted" id="targetProductsHint">Оберіть категорію</p>
+                    <div class="products-table" id="targetProducts"></div>
+                </div>
+            </div>
+        </section>
+    </main>
 
     <script>
-        const resultsState = {
-            all: [],
-            filtered: [],
-            search: '',
-            counts: { matched: 0, ambiguous: 0, no_match: 0 },
-            groupCollapsed: { matched: false, ambiguous: false, no_match: false },
-            lastGrouped: { matched: [], ambiguous: [], no_match: [] }
+        const state = {
+            stores: [],
+            referenceStoreId: null,
+            targetStoreId: null,
+            referenceCategoryId: null,
+            targetCategoryId: null,
         };
-        const RESULTS_GROUPS = [
-            { key: 'matched', label: 'Знайдені збіги' },
-            { key: 'ambiguous', label: 'Невизначені' },
-            { key: 'no_match', label: 'Відсутні' }
-        ];
-        let resultsDebounceTimer;
-        let _adapters = [];
 
-        async function initialize() {
-            await loadReferenceCategories();
-            await loadAdapters();
-            await setupCompareRows();
-            setupResultsPanel();
+        const statusEl = document.getElementById('mainStatus');
+        const referenceStoreSelect = document.getElementById('referenceStore');
+        const targetStoreSelect = document.getElementById('targetStore');
+        const referenceCategoriesEl = document.getElementById('referenceCategories');
+        const targetCategoriesEl = document.getElementById('targetCategories');
+
+        function setStatus(message, type = 'info') {
+            statusEl.textContent = message;
+            statusEl.style.background = type === 'error' ? '#ffe3e3' : '#eef1ff';
+            statusEl.style.color = type === 'error' ? '#b20000' : 'var(--muted)';
         }
 
-        async function setupCompareRows() {
-            const rows = document.querySelectorAll('.url-input-row');
-            for (const row of rows) {
-                const adapterSel = row.querySelector('.adapter-select');
-                const catSel = row.querySelector('.category-select');
-                populateAdapterOptions(adapterSel);
-                adapterSel.addEventListener('change', () => onAdapterChange(adapterSel, catSel));
-                if (adapterSel.options.length > 1) {
-                    adapterSel.selectedIndex = 1;
-                    await onAdapterChange(adapterSel, catSel);
+        async function loadStores() {
+            setStatus('Завантажуємо магазини…');
+            try {
+                const res = await fetch('/api/stores');
+                if (!res.ok) throw new Error('Не вдалося отримати магазини');
+                const data = await res.json();
+                state.stores = data.stores || [];
+                populateStoreSelect(referenceStoreSelect, state.stores, 'reference');
+                populateStoreSelect(targetStoreSelect, state.stores, 'target');
+                setStatus('Оберіть категорії для перегляду товарів.');
+            } catch (err) {
+                console.error(err);
+                setStatus('Помилка завантаження магазинів: ' + err.message, 'error');
+            }
+        }
+
+        function populateStoreSelect(selectEl, stores, type) {
+            selectEl.innerHTML = '<option value="">Оберіть магазин</option>' +
+                stores.map(s => `<option value="${s.id}">${s.name}${s.is_reference ? ' (ref)' : ''}</option>`).join('');
+            selectEl.onchange = (event) => {
+                const storeId = Number(event.target.value) || null;
+                if (type === 'reference') {
+                    state.referenceStoreId = storeId;
+                    state.referenceCategoryId = null;
+                    clearProducts('reference');
+                    loadCategories(storeId, referenceCategoriesEl, 'reference');
+                } else {
+                    state.targetStoreId = storeId;
+                    state.targetCategoryId = null;
+                    clearProducts('target');
+                    loadCategories(storeId, targetCategoriesEl, 'target');
                 }
-            }
+            };
         }
 
-        async function loadAdapters() {
-            try {
-                const resp = await fetch('/api/adapters');
-                if (!resp.ok) return;
-                const data = await resp.json();
-                _adapters = data.adapters || [];
-            } catch (e) {
-                console.error('failed to load adapters', e);
-            }
+        function clearProducts(type) {
+            const hint = document.getElementById(`${type}ProductsHint`);
+            const container = document.getElementById(`${type}Products`);
+            if (hint) hint.textContent = 'Оберіть категорію';
+            if (container) container.innerHTML = '';
         }
 
-        async function loadReferenceCategories() {
-            const select = document.getElementById('category');
-            if (!select) return;
-            try {
-                const resp = await fetch('/api/categories');
-                if (!resp.ok) return;
-                const data = await resp.json();
-                const categories = data.categories || [];
-                select.querySelectorAll('option:not([value=""])').forEach(opt => opt.remove());
-                categories.forEach(category => {
-                    const option = document.createElement('option');
-                    if (typeof category === 'string') {
-                        option.value = category;
-                        option.textContent = category;
-                    } else if (category && typeof category === 'object') {
-                        option.value = category.url || category.name || '';
-                        option.textContent = category.name || category.url || '';
-                    }
-                    if (option.value) {
-                        select.appendChild(option);
-                    }
-                });
-            } catch (e) {
-                console.error('failed to load reference categories', e);
-            }
-        }
-
-        function populateAdapterOptions(select) {
-            select.innerHTML = '';
-            const placeholder = document.createElement('option');
-            placeholder.value = '';
-            placeholder.textContent = '(виберіть адаптер)';
-            select.appendChild(placeholder);
-            _adapters.forEach(a => {
-                const opt = document.createElement('option');
-                opt.value = a.name;
-                opt.textContent = a.name + (a.domains && a.domains.length ? ' (' + a.domains[0] + ')' : '');
-                select.appendChild(opt);
-            });
-        }
-
-        async function onAdapterChange(adapterSel, catSel) {
-            const adapterName = adapterSel.value;
-            catSel.innerHTML = '';
-            const placeholder = document.createElement('option');
-            placeholder.value = '';
-            placeholder.textContent = '(категорія)';
-            catSel.appendChild(placeholder);
-            if (!adapterName) return;
-            try {
-                const resp = await fetch('/api/adapters/' + encodeURIComponent(adapterName) + '/categories');
-                if (!resp.ok) return;
-                const data = await resp.json();
-                const cats = data.categories || [];
-                cats.forEach(c => {
-                    const opt = document.createElement('option');
-                    if (typeof c === 'string') {
-                        opt.value = c;
-                        opt.textContent = c;
-                    } else if (c && typeof c === 'object') {
-                        opt.value = c.url || c.name;
-                        opt.textContent = c.name || c.url || '';
-                    }
-                    catSel.appendChild(opt);
-                });
-            } catch (e) {
-                console.error('failed to load categories for', adapterName, e);
-            }
-        }
-
-        function addUrlRow() {
-            const urlInputs = document.getElementById('urlInputs');
-            const newRow = document.createElement('div');
-            newRow.className = 'url-input-row';
-            newRow.innerHTML = `
-                <label style="display:none">Adapter</label>
-                <select class="adapter-select" aria-label="adapter-select"></select>
-                <label style="display:none">Category</label>
-                <select class="category-select" aria-label="category-select"></select>
-                <button type="button" class="btn-remove" onclick="removeUrlRow(this)">Видалити</button>
-            `;
-            urlInputs.appendChild(newRow);
-            const adapterSel = newRow.querySelector('.adapter-select');
-            const catSel = newRow.querySelector('.category-select');
-            populateAdapterOptions(adapterSel);
-            adapterSel.addEventListener('change', () => onAdapterChange(adapterSel, catSel));
-            if (adapterSel.options.length > 1) {
-                adapterSel.selectedIndex = 1;
-                onAdapterChange(adapterSel, catSel);
-            }
-        }
-
-        function removeUrlRow(button) {
-            button.parentElement.remove();
-        }
-
-        function setupResultsPanel() {
-            const searchInput = document.getElementById('resultsSearch');
-            if (!searchInput) return;
-            searchInput.addEventListener('input', () => {
-                clearTimeout(resultsDebounceTimer);
-                resultsDebounceTimer = setTimeout(() => {
-                    resultsState.search = searchInput.value.trim().toLowerCase();
-                    applyResultsFilter();
-                }, 250);
-            });
-        }
-
-        document.addEventListener('DOMContentLoaded', initialize);
-
-        document.getElementById('compareForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            const category = document.getElementById('category').value;
-            const rows = document.querySelectorAll('.url-input-row');
-            const urls = Array.from(rows).map(row => {
-                const catSel = row.querySelector('.category-select');
-                return (catSel && catSel.value) ? catSel.value : '';
-            }).filter(v => v);
-
-            if (urls.length === 0) {
-                showError('Будь ласка, виберіть принаймні одну пару адаптер/категорія');
+        async function loadCategories(storeId, container, type) {
+            container.innerHTML = '';
+            if (!storeId) {
+                container.innerHTML = '<p class="muted">Виберіть магазин</p>';
                 return;
             }
-
-            showLoading(true);
-            hideError();
-
+            container.innerHTML = '<p class="muted">Завантаження…</p>';
             try {
-                const response = await fetch('/api/check', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ urls, category })
-                });
-
-                const data = await response.json();
-
-                if (!response.ok) {
-                    showError(data.error || 'Помилка при парсингу');
-                    showLoading(false);
-                    return;
-                }
-
-                displayResults(data);
-                showLoading(false);
-            } catch (error) {
-                showError('Помилка підключення: ' + error.message);
-                showLoading(false);
-            }
-        });
-
-        function displayResults(data) {
-            const flattened = normalizeCheckResults(data.missing || []);
-            resultsState.all = flattened;
-            resultsState.counts = countGroups(flattened);
-            resultsState.search = '';
-            const searchInput = document.getElementById('resultsSearch');
-            if (searchInput) {
-                searchInput.value = '';
-            }
-            updateStats(data, resultsState.counts);
-            updateResultsSummary(resultsState.counts);
-            applyResultsFilter();
-            const resultsWrapper = document.querySelector('.results-section');
-            if (resultsWrapper) {
-                resultsWrapper.classList.add('visible');
+                const res = await fetch(`/api/stores/${storeId}/categories`);
+                if (!res.ok) throw new Error('Не вдалося отримати категорії');
+                const data = await res.json();
+                renderCategories(container, data.categories || [], type);
+            } catch (err) {
+                console.error(err);
+                container.innerHTML = `<p class="muted" style="color:#b20000;">${err.message}</p>`;
             }
         }
 
-        function normalizeCheckResults(raw) {
-            const list = [];
-            raw.forEach(entry => {
-                if (Array.isArray(entry)) {
-                    entry.forEach(item => list.push(item));
-                } else if (entry) {
-                    list.push(entry);
-                }
-            });
-            return list.map((item, idx) => {
-                const status = normalizeStatus(item.status);
-                const normalized = {
-                    id: `${status}-${idx}`,
-                    status,
-                    color: normalizeColor(item.color),
-                    main: item.main || null,
-                    other: item.other || null,
-                    candidates: Array.isArray(item.candidates) ? item.candidates : [],
-                    score: item.score,
-                    gap: item.gap,
-                    status_reason: item.status_reason || ''
-                };
-                normalized.siteLabel = resolveSiteLabel(normalized);
-                return normalized;
-            });
-        }
-
-        function resolveSiteLabel(item) {
-            const candidates = [
-                item.other?.source_site,
-                item.main?.source_site,
-                ...(item.candidates || []).map(c => c.item?.source_site)
-            ];
-            const label = candidates.find(value => typeof value === 'string' && value.trim());
-            return label ? label.trim() : 'невизначено';
-        }
-
-        function normalizeStatus(value) {
-            if (!value && value !== 0) return 'no_match';
-            if (typeof value === 'number') {
-                if (value === 0 || value === 1) return 'matched';
-                return 'no_match';
+        function renderCategories(container, categories, type) {
+            if (!categories.length) {
+                container.innerHTML = '<p class="muted">Немає категорій. Спробуйте синхронізувати на сервісній сторінці.</p>';
+                return;
             }
-            const allowed = ['matched', 'ambiguous', 'no_match'];
-            return allowed.includes(value) ? value : 'no_match';
-        }
-
-        function normalizeColor(value) {
-            const allowed = ['green', 'yellow', 'red', 'blue'];
-            return allowed.includes(value) ? value : 'white';
-        }
-
-        function countGroups(items) {
-            const counts = { matched: 0, ambiguous: 0, no_match: 0 };
-            items.forEach(item => {
-                counts[item.status] = (counts[item.status] || 0) + 1;
-            });
-            return counts;
-        }
-
-        function updateStats(meta, counts) {
-            const statsHtml = `
-                <div class="stats-text">🧮 Перевірено посилань: <strong>${meta.total_urls || 0}</strong></div>
-                <div class="stats-text">🚫 Відсутніх товарів: <strong>${meta.total || 0}</strong></div>
-                <div class="stats-text">✅ Збіги: <strong>${counts.matched}</strong></div>
-                <div class="stats-text">⚖️ Невизначені: <strong>${counts.ambiguous}</strong></div>
-                <div class="stats-text">🚫 Відсутні: <strong>${counts.no_match}</strong></div>
-            `;
-            document.getElementById('stats').innerHTML = statsHtml;
-        }
-
-        function updateResultsSummary(counts) {
-            const summary = document.getElementById('resultsSummary');
-            if (summary) {
-                summary.textContent = `Збіги: ${counts.matched} • Невизначені: ${counts.ambiguous} • Відсутні: ${counts.no_match}`;
-            }
-            renderSummaryBadges(counts);
-        }
-
-        function renderSummaryBadges(counts) {
-            const container = document.getElementById('summaryBadges');
-            if (!container) return;
             container.innerHTML = '';
-            const items = [
-                { key: 'matched', label: 'Знайдені', value: counts.matched },
-                { key: 'ambiguous', label: 'Невизначені', value: counts.ambiguous },
-                { key: 'no_match', label: 'Відсутні', value: counts.no_match }
-            ];
-            items.forEach(({ key, label, value }) => {
-                const badge = document.createElement('span');
-                badge.className = `summary-badge summary-badge-${key}`;
-                badge.textContent = `${label}: ${value}`;
-                container.appendChild(badge);
-            });
-        }
-
-        function applyResultsFilter() {
-            const term = resultsState.search;
-            const filtered = term
-                ? resultsState.all.filter(item => matchesSearch(item, term))
-                : [...resultsState.all];
-            resultsState.filtered = filtered;
-            const grouped = groupByStatus(filtered);
-            renderResultsGroups(grouped);
-        }
-
-        function matchesSearch(item, term) {
-            if (!term) return true;
-            const haystack = [];
-            if (item.main?.name) haystack.push(item.main.name);
-            if (item.other?.name) haystack.push(item.other.name);
-            item.candidates.forEach(candidate => {
-                if (candidate.item?.name) haystack.push(candidate.item.name);
-            });
-            return haystack.some(name => name.toLowerCase().includes(term));
-        }
-
-        function groupByStatus(items) {
-            const grouped = { matched: [], ambiguous: [], no_match: [] };
-            items.forEach(item => {
-                const bucket = grouped[item.status] || grouped.no_match;
-                bucket.push(item);
-            });
-            return grouped;
-        }
-
-        function renderResultsGroups(grouped) {
-            resultsState.lastGrouped = grouped;
-            let visibleTotal = 0;
-            RESULTS_GROUPS.forEach(({ key }) => {
-                const section = document.querySelector(`.results-group[data-group="${key}"]`);
-                const list = document.getElementById(`${key}List`);
-                const countNode = document.getElementById(`${key}VisibleCount`);
-                if (!section || !list || !countNode) return;
-                const items = grouped[key] || [];
-                countNode.textContent = items.length;
-                if (!items.length) {
-                    section.setAttribute('hidden', 'hidden');
-                    list.innerHTML = '';
-                    return;
-                }
-                section.removeAttribute('hidden');
-                visibleTotal += items.length;
-                section.classList.toggle('collapsed', resultsState.groupCollapsed[key]);
-                if (key === 'no_match') {
-                    renderNoMatchSites(list, items);
-                } else {
-                    const fragment = document.createDocumentFragment();
-                    items.forEach(item => fragment.appendChild(createResultCard(item)));
-                    list.replaceChildren(fragment);
-                }
-            });
-            wireGroupToggleButtons();
-            toggleResultsEmptyState(visibleTotal === 0);
-        }
-
-        function renderNoMatchSites(container, items) {
-            container.innerHTML = '';
-            const siteMap = items.reduce((acc, item) => {
-                const site = item.siteLabel || 'невизначено';
-                acc[site] = acc[site] || [];
-                acc[site].push(item);
-                return acc;
-            }, {});
-            Object.entries(siteMap)
-                .sort(([a], [b]) => a.localeCompare(b, 'uk'))
-                .forEach(([site, siteItems]) => {
-                    const siteBlock = document.createElement('article');
-                    siteBlock.className = 'site-group';
-                    const header = document.createElement('div');
-                    header.className = 'site-group-header';
-                    header.innerHTML = `<span>${escapeHtml(site)}</span><span class="site-group-count">${siteItems.length}</span>`;
-                    const body = document.createElement('div');
-                    body.className = 'site-group-body';
-                    siteItems.forEach(item => body.appendChild(createResultCard(item)));
-                    siteBlock.appendChild(header);
-                    siteBlock.appendChild(body);
-                    container.appendChild(siteBlock);
-                });
-        }
-
-        function wireGroupToggleButtons() {
-            document.querySelectorAll('.group-toggle[data-group]').forEach(button => {
-                const key = button.dataset.group;
-                button.textContent = resultsState.groupCollapsed[key] ? 'Розгорнути' : 'Згорнути';
-                button.onclick = () => {
-                    resultsState.groupCollapsed[key] = !resultsState.groupCollapsed[key];
-                    renderResultsGroups(resultsState.lastGrouped || groupByStatus(resultsState.filtered));
+            categories.forEach(cat => {
+                const div = document.createElement('div');
+                div.className = 'category-item' + (isCategoryActive(type, cat.id) ? ' active' : '');
+                div.innerHTML = `<strong>${cat.name}</strong><div class="muted">${cat.url || 'Без URL'}</div>`;
+                div.onclick = () => {
+                    if (type === 'reference') {
+                        state.referenceCategoryId = cat.id;
+                    } else {
+                        state.targetCategoryId = cat.id;
+                    }
+                    renderCategories(container, categories, type);
+                    loadProducts(cat.id, type);
                 };
+                container.appendChild(div);
             });
         }
 
-        function toggleResultsEmptyState(show) {
-            const message = document.getElementById('resultsEmptyMessage');
-            if (!message) return;
-            message.hidden = !show;
+        function isCategoryActive(type, categoryId) {
+            return (type === 'reference' ? state.referenceCategoryId : state.targetCategoryId) === categoryId;
         }
 
-        function createResultCard(item) {
-            const card = document.createElement('article');
-            card.className = 'result-card';
-            card.dataset.accent = item.color || 'white';
-            if (item.score !== undefined || item.gap !== undefined) {
-                card.title = formatScoreTooltip(item.score, item.gap);
+        async function loadProducts(categoryId, type) {
+            const hint = document.getElementById(`${type}ProductsHint`);
+            const container = document.getElementById(`${type}Products`);
+            if (hint) hint.textContent = 'Завантаження…';
+            container.innerHTML = '';
+            try {
+                const res = await fetch(`/api/categories/${categoryId}/products`);
+                if (!res.ok) throw new Error('Не вдалося отримати товари');
+                const data = await res.json();
+                renderProducts(container, data.products || []);
+                if (hint) hint.textContent = data.products?.length ? `Товарів: ${data.products.length}` : 'Немає товарів у БД';
+            } catch (err) {
+                console.error(err);
+                if (hint) hint.textContent = 'Помилка завантаження';
+                container.innerHTML = `<p class="muted" style="color:#b20000;">${err.message}</p>`;
             }
-            const siteLabel = item.siteLabel || 'невизначено';
-
-            const header = document.createElement('div');
-            header.className = 'result-card-header';
-            const statusPill = document.createElement('span');
-            statusPill.className = 'result-status-pill';
-            statusPill.textContent = getStatusLabel(item.status, siteLabel);
-            header.appendChild(statusPill);
-            if (item.status_reason) {
-                const reason = document.createElement('span');
-                reason.className = 'result-card-reason';
-                reason.textContent = item.status_reason;
-                header.appendChild(reason);
-            }
-            card.appendChild(header);
-
-            const entities = document.createElement('div');
-            entities.className = 'result-entities';
-            entities.appendChild(createResultEntity('Основний каталог', item.main));
-            entities.appendChild(createResultEntity('Зовнішній сайт', item.other));
-            card.appendChild(entities);
-
-            if (item.status === 'ambiguous' && item.candidates.length) {
-                const details = document.createElement('details');
-                details.className = 'ambiguous-details';
-                const summary = document.createElement('summary');
-                summary.textContent = 'Показати кандидатів';
-                details.appendChild(summary);
-                const candidatesContainer = document.createElement('div');
-                candidatesContainer.className = 'ambiguous-candidate-list';
-                item.candidates.forEach(candidate => candidatesContainer.appendChild(createCandidateCard(candidate)));
-                details.appendChild(candidatesContainer);
-                card.appendChild(details);
-            } else if (item.candidates.length) {
-                const badge = document.createElement('div');
-                badge.className = 'result-card-candidates';
-                badge.textContent = `Кандидати: ${item.candidates.length}`;
-                badge.title = item.candidates
-                    .map(c => `${c.item?.name || '—'} | Score: ${formatNumber(c.score)}`)
-                    .join('\n');
-                card.appendChild(badge);
-            }
-
-            return card;
         }
 
-        function createCandidateCard(candidate) {
-            const wrapper = document.createElement('article');
-            wrapper.className = 'candidate-card';
-            const name = candidate.item?.name || '—';
-            wrapper.innerHTML = `
-                <strong>${escapeHtml(name)}</strong>
-                <span>Score: ${formatNumber(candidate.score)}</span>
-                <span>${escapeHtml(candidate.item?.source_site || 'невизначено')}</span>
+        function renderProducts(container, products) {
+            if (!products.length) {
+                container.innerHTML = '<p class="muted">Даних немає. Запустіть скрапінг на сервісній сторінці.</p>';
+                return;
+            }
+            const rows = products.map(prod => `
+                <tr>
+                    <td>${prod.name}</td>
+                    <td>${prod.price != null ? prod.price : '—'} ${prod.currency || ''}</td>
+                    <td><a class="link-btn" href="${prod.product_url}" target="_blank" rel="noopener">Посилання</a></td>
+                </tr>
+            `).join('');
+            container.innerHTML = `
+                <div class="table-wrapper">
+                    <table>
+                        <thead><tr><th>Назва</th><th>Ціна</th><th>Посилання</th></tr></thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
             `;
-            if (candidate.item?.url) {
-                const link = document.createElement('a');
-                link.href = candidate.item.url;
-                link.target = '_blank';
-                link.rel = 'noreferrer';
-                link.textContent = 'Відкрити';
-                wrapper.appendChild(link);
-            }
-            return wrapper;
         }
 
-        function formatScoreTooltip(score, gap) {
-            const scoreText = score !== undefined && score !== null ? formatNumber(score) : '—';
-            const gapText = gap !== undefined && gap !== null ? formatNumber(gap) : '—';
-            return `Score: ${scoreText}, gap: ${gapText}`;
-        }
-
-        function createResultEntity(title, product) {
-            const block = document.createElement('div');
-            block.className = 'result-entity';
-            const heading = document.createElement('h4');
-            heading.textContent = title;
-            block.appendChild(heading);
-            if (!product) {
-                const empty = document.createElement('p');
-                empty.className = 'result-entity-meta';
-                empty.textContent = 'Немає даних';
-                block.appendChild(empty);
-                return block;
-            }
-            const name = document.createElement('p');
-            name.className = 'result-entity-name';
-            name.textContent = product.name || '—';
-            block.appendChild(name);
-            if (product.source_site) {
-                const source = document.createElement('p');
-                source.className = 'result-entity-meta';
-                source.textContent = product.source_site;
-                block.appendChild(source);
-            }
-            const price = document.createElement('p');
-            price.className = 'result-entity-price';
-            price.textContent = formatPrice(product);
-            block.appendChild(price);
-            if (product.url) {
-                const link = document.createElement('a');
-                link.className = 'result-card-link';
-                link.href = product.url;
-                link.target = '_blank';
-                link.rel = 'noreferrer';
-                link.textContent = 'Переглянути';
-                block.appendChild(link);
-            }
-            return block;
-        }
-
-        function formatPrice(product) {
-            if (!product) return '—';
-            if (product.parsed_price && product.parsed_price.value) {
-                const currency = product.parsed_price.currency || '';
-                return `${product.parsed_price.value} ${currency}`.trim();
-            }
-            if (product.price !== undefined && product.price !== null) {
-                return `${product.price} ${product.currency || ''}`.trim();
-            }
-            if (product.price_raw) {
-                return product.price_raw;
-            }
-            return '—';
-        }
-
-        function getStatusLabel(status, siteLabel) {
-            switch (status) {
-                case 'matched':
-                    return 'Збіг на обох сайтах';
-                case 'ambiguous':
-                    return 'Потребує перевірки';
-                default:
-                    return `Відсутнє на ${siteLabel}`;
-            }
-        }
-
-        function formatNumber(value) {
-            if (value === undefined || value === null || Number.isNaN(Number(value))) return '—';
-            return Number(value).toFixed(2);
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text ?? '';
-            return div.innerHTML;
-        }
-
-        function showLoading(show) {
-            document.getElementById('loading').classList.toggle('visible', show);
-            document.getElementById('submitBtn').disabled = show;
-        }
-
-        function showError(message) {
-            const errorDiv = document.getElementById('error');
-            errorDiv.textContent = message;
-            errorDiv.classList.add('visible');
-        }
-
-        function hideError() {
-            document.getElementById('error').classList.remove('visible');
-        }
+        document.addEventListener('DOMContentLoaded', loadStores);
     </script>
 </body>
 </html>

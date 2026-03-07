@@ -17,6 +17,7 @@ from pricewatch.core.plugin_base import BaseShopAdapter
 from __init__ import default_client
 
 import logging
+from pricewatch.services.validation_diagnostics import ensure_metadata, record_validation_error
 
 logger = logging.getLogger(__name__)
 VALIDATION_ERRORS_SAMPLE_LIMIT = 10
@@ -39,9 +40,8 @@ class CategorySyncService:
         return adapter
 
     def _ensure_metadata(self, metadata: Dict[str, Any]) -> None:
-        metadata.setdefault("skipped_invalid_categories", 0)
-        metadata.setdefault("validation_error_counts", {})
-        metadata.setdefault("validation_errors_sample", [])
+        # delegate to shared helper
+        ensure_metadata(metadata, skipped_key="skipped_invalid_categories", sample_limit=VALIDATION_ERRORS_SAMPLE_LIMIT)
 
     def _log_skipped_category(
         self,
@@ -82,23 +82,26 @@ class CategorySyncService:
             category_name=category_name,
             category_url=category_url,
         )
-        metadata["skipped_invalid_categories"] += 1
-        counts = metadata["validation_error_counts"]
-        counts[reason] = counts.get(reason, 0) + 1
-        samples = metadata["validation_errors_sample"]
-        if len(samples) < VALIDATION_ERRORS_SAMPLE_LIMIT:
-            entry = {"type": reason, "message": message}
-            if category_name is not None:
-                entry["category_name"] = category_name
-            if category_url is not None:
-                entry["category_url"] = category_url
-            if adapter_name is not None:
-                entry["adapter_name"] = adapter_name
-            if getattr(store, "id", None) is not None:
-                entry["store_id"] = getattr(store, "id", None)
-            if getattr(store, "name", None):
-                entry["store_name"] = store.name
-            samples.append(entry)
+        extra = { }
+        if category_name is not None:
+            extra["category_name"] = category_name
+        if category_url is not None:
+            extra["category_url"] = category_url
+        if adapter_name is not None:
+            extra["adapter_name"] = adapter_name
+        if getattr(store, "id", None) is not None:
+            extra["store_id"] = getattr(store, "id", None)
+        if getattr(store, "name", None):
+            extra["store_name"] = store.name
+
+        record_validation_error(
+            metadata,
+            reason,
+            message,
+            extra_fields=extra,
+            skipped_key="skipped_invalid_categories",
+            sample_limit=VALIDATION_ERRORS_SAMPLE_LIMIT,
+        )
 
     def sync_store_categories(self, store_id: int) -> dict[str, Any]:
         store = self._get_store(store_id)

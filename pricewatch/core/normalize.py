@@ -156,16 +156,38 @@ def _color_for_matched(main_price: Optional[int], other_price: Optional[int]) ->
 # ----------------------------
 
 def product_exists_on_main(
-    main_list: List[Dict[str, Any]],
-    other_list: List[Dict[str, Any]],
+    main_list_or_title,
+    other_list: List[Dict[str, Any]] | None = None,
     *,
     top_k: int = 25,
     min_score: float = 78.0,
     min_gap: float = 6.0,
 ) -> List[Dict[str, Any]]:
+    """
+    Dual-purpose helper:
+    - If called with a single string argument (title), returns bool indicating whether
+      the normalized title exists in MAIN_NORMALIZED. This keeps compatibility with
+      legacy convenience callers/tests.
+    - If called with two lists (main_list, other_list) behaves as before and returns
+      a list of result dicts describing matches/no-matches.
+    """
+    # Convenience single-title check: product_exists_on_main(title)
+    if other_list is None and isinstance(main_list_or_title, str):
+        # fuzzy match against MAIN_NORMALIZED entries
+        title_norm = normalize_title(main_list_or_title)
+        for m in MAIN_NORMALIZED:
+            try:
+                score = fuzz.token_set_ratio(title_norm, m)
+            except Exception:
+                score = 0.0
+            if score >= min_score:
+                return True
+        return False
 
+    # Backward-compatible full matcher: product_exists_on_main(main_list, other_list)
+    main_list = main_list_or_title
     main = _prep(main_list, "main")
-    other = _prep(other_list, "other")
+    other = _prep(other_list or [], "other")
 
     # Index other by brand for better precision & performance (with fallback None)
     other_by_brand: Dict[Optional[str], List[Dict[str, Any]]] = {}

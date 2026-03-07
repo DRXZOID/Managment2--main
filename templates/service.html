@@ -453,6 +453,27 @@
             showInlineStatus('Синхронізація товарів…', 'warning', statusId);
             const res = await fetchJson(`/api/categories/${categoryId}/products/sync`, { method: 'POST' });
             showInlineStatus('Синхронізовано. Оновлення стану…', 'success', statusId);
+            // render compact summary if provided
+            try {
+                const summary = res && res.summary ? res.summary : null;
+                if (summary) {
+                    const summaryText = `processed ${summary.processed ?? 0} · created ${summary.created ?? 0} · updated ${summary.updated ?? 0} · price changes ${summary.price_changes ?? summary.price_changes_detected ?? 0}`;
+                    // append summary small line to status element (non-intrusive)
+                    const el = document.getElementById(statusId);
+                    if (el) {
+                        const prev = el.querySelector('.sync-summary');
+                        if (prev) prev.remove();
+                        const span = document.createElement('div');
+                        span.className = 'sync-summary';
+                        span.style.fontSize = '0.85rem';
+                        span.style.marginTop = '6px';
+                        span.textContent = summaryText;
+                        el.appendChild(span);
+                    }
+                }
+            } catch (e) {
+                console.warn('Failed to render summary', e);
+            }
             // refresh related UI: runs and categories for this store/tab
             loadScrapeStatus();
             // reload categories table for the relevant tab/store to reflect product counts or updated_at
@@ -466,281 +487,258 @@
         }
     }
 
-    document.getElementById('createMappingBtn').addEventListener('click', () => openMappingModal());
-
-    const mappingModal = document.getElementById('mappingModal');
-    const mappingForm = document.getElementById('mappingForm');
-    const mappingSubmit = document.getElementById('mappingSubmit');
-    const mappingCancel = document.getElementById('mappingCancel');
-    const mappingPairHint = document.getElementById('mappingPairHint');
-    let editingMappingId = null;
-
-    mappingCancel.addEventListener('click', () => mappingModal.close());
-
-    mappingForm.addEventListener('submit', async (event) => {
-         event.preventDefault();
-         let payload = {
-             match_type: document.getElementById('mappingMatchType').value || null,
-             confidence: document.getElementById('mappingConfidence').value ? Number(document.getElementById('mappingConfidence').value) : null,
-         };
-         // include category IDs only when creating a new mapping
-         if (!editingMappingId) {
-             payload = Object.assign({
-                 reference_category_id: Number(document.getElementById('mappingReferenceCategory').value),
-                 target_category_id: Number(document.getElementById('mappingTargetCategory').value),
-             }, payload);
-         }
-         try {
-            const query = getMappingQueryString();
-            const endpoint = editingMappingId ? `/api/category-mappings/${editingMappingId}${query}` : `/api/category-mappings${query}`;
-            const method = editingMappingId ? 'PUT' : 'POST';
-            const response = await fetchJson(endpoint, {
-                method,
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
-            mappingModal.close();
-            applyMappingResponse(response, editingMappingId ? 'Мапінг оновлено' : 'Мапінг створено');
-         } catch (err) {
-             setStatus('mappingStatus', 'Помилка збереження: ' + err.message, 'error');
-         }
-     });
-
-    async function openMappingModal(mapping = null) {
-        editingMappingId = mapping ? mapping.id : null;
-        document.getElementById('mappingModalTitle').textContent = mapping ? 'Редагувати мапінг' : 'Новий мапінг';
-        await ensureCategoryOptions('mappingReferenceCategory', serviceState.mappingRefStoreId);
-        await ensureCategoryOptions('mappingTargetCategory', serviceState.mappingTargetStoreId);
-        const refSelect = document.getElementById('mappingReferenceCategory');
-        const tgtSelect = document.getElementById('mappingTargetCategory');
-        refSelect.value = mapping ? mapping.reference_category_id : '';
-        tgtSelect.value = mapping ? mapping.target_category_id : '';
-        document.getElementById('mappingMatchType').value = mapping?.match_type || '';
-        document.getElementById('mappingConfidence').value = mapping?.confidence ?? '';
-        if (editingMappingId && mapping) {
-            mappingPairHint.textContent = `Пара: ${mapping.reference_category_name || `#${mapping.reference_category_id}`} → ${mapping.target_category_name || `#${mapping.target_category_id}`}`;
-            refSelect.disabled = true;
-            tgtSelect.disabled = true;
-        } else {
-            mappingPairHint.textContent = 'Оберіть категорії, щоб сформувати новий мапінг.';
-            refSelect.disabled = false;
-            tgtSelect.disabled = false;
-        }
-        mappingModal.showModal();
-    }
-
-    async function ensureCategoryOptions(selectId, storeId) {
-        const select = document.getElementById(selectId);
-        if (!storeId) {
-            select.innerHTML = '<option value="">Оберіть магазин</option>';
-            return;
-        }
-        if (!serviceState.categories[storeId]) {
-            const data = await fetchJson(`/api/stores/${storeId}/categories`);
-            serviceState.categories[storeId] = data.categories || [];
-        }
-        select.innerHTML = ['<option value="">Оберіть категорію</option>', ...serviceState.categories[storeId].map(cat => `<option value="${cat.id}">${cat.name}</option>`)].join('');
-    }
-
-    function getMappingQueryString() {
-        const params = new URLSearchParams();
-        if (serviceState.mappingRefStoreId) {
-            params.append('reference_store_id', serviceState.mappingRefStoreId);
-        }
-        if (serviceState.mappingTargetStoreId) {
-            params.append('target_store_id', serviceState.mappingTargetStoreId);
-        }
-        const query = params.toString();
-        return query ? `?${query}` : '';
-    }
-
-    function applyMappingResponse(data, successMessage) {
-        const mappings = Array.isArray(data.mappings) ? data.mappings : [];
-        if (successMessage) {
-            setStatus('mappingStatus', successMessage, 'success');
-        } else {
-            setStatus('mappingStatus', mappings.length ? `Мапінгів: ${mappings.length}` : 'Мапінги відсутні', mappings.length ? 'success' : 'info');
-        }
-        renderMappings(mappings);
-    }
-
     async function loadMappings() {
-        if (!serviceState.mappingRefStoreId || !serviceState.mappingTargetStoreId) {
-            setStatus('mappingStatus', 'Виберіть магазини', 'info');
+        const refStoreId = serviceState.mappingRefStoreId;
+        const targetStoreId = serviceState.mappingTargetStoreId;
+        const statusId = 'mappingStatus';
+        if (!refStoreId || !targetStoreId) {
+            setStatus(statusId, 'Виберіть обидва магазини для мапінгу', 'warning');
             document.getElementById('mappingTable').innerHTML = '';
             return;
         }
-        setStatus('mappingStatus', 'Завантаження…', 'warning');
+        setStatus(statusId, 'Завантаження мапінгів…', 'warning');
         try {
-            const data = await fetchJson(`/api/category-mappings${getMappingQueryString()}`);
-            applyMappingResponse(data);
+            const data = await fetchJson(`/api/stores/${refStoreId}/mappings/${targetStoreId}`);
+            serviceState.mappings = data.mappings || [];
+            renderMappingsTable(data.mappings || []);
+            setStatus(statusId, `Знайдено мапінгів: ${data.mappings.length}`, 'success');
         } catch (err) {
-            setStatus('mappingStatus', err.message, 'error');
+            setStatus(statusId, 'Помилка завантаження мапінгів: ' + err.message, 'error');
+            document.getElementById('mappingTable').innerHTML = '';
         }
     }
 
-    function formatCategorySummary(name, storeName, fallbackCategoryId, fallbackStoreId) {
-        const title = name || (fallbackCategoryId ? `#${fallbackCategoryId}` : '—');
-        const storeLine = storeName ? `<div class="muted" style="font-size:0.78rem;">${storeName}</div>` : (fallbackStoreId ? `<div class="muted" style="font-size:0.78rem;">store #${fallbackStoreId}</div>` : '');
-        return `<div><strong>${title}</strong>${storeLine}</div>`;
-    }
-
-    function renderMappings(mappings) {
+    function renderMappingsTable(mappings) {
         if (!mappings.length) {
-            document.getElementById('mappingTable').innerHTML = '<p class="muted">Мапінги відсутні.</p>';
+            document.getElementById('mappingTable').innerHTML = '<p class="muted">Немає мапінгів. Створіть новий мапінг.</p>';
             return;
         }
         const rows = mappings.map(map => `
             <tr>
-                <td>${formatCategorySummary(map.reference_category_name, map.reference_store_name, map.reference_category_id, map.reference_store_id)}</td>
-                <td>${formatCategorySummary(map.target_category_name, map.target_store_name, map.target_category_id, map.target_store_id)}</td>
+                <td>${map.reference_category_name}</td>
+                <td>${map.target_category_name}</td>
                 <td>${map.match_type || '—'}</td>
-                <td>${map.confidence ?? '—'}</td>
-                <td>${map.updated_at ? new Date(map.updated_at).toLocaleString() : '—'}</td>
-                <td class="actions">
-                    <button class="ghost" data-edit="${map.id}">Редагувати</button>
-                    <button class="ghost" data-delete="${map.id}">Видалити</button>
+                <td>${map.confidence != null ? (map.confidence * 100).toFixed(0) + '%' : '—'}</td>
+                <td>
+                    <button class="ghost" data-id="${map.id}" data-action="edit">Редагувати</button>
+                    <button class="ghost" data-id="${map.id}" data-action="delete">Видалити</button>
                 </td>
             </tr>
         `).join('');
-        document.getElementById('mappingTable').innerHTML = `
+        const tableHtml = `
             <table>
-                <thead><tr><th>Reference</th><th>Target</th><th>Тип</th><th>Conf</th><th>Оновлено</th><th>Дії</th></tr></thead>
+                <thead><tr><th>Категорія (reference)</th><th>Категорія (target)</th><th>Тип відповідності</th><th>Confidence</th><th>Дії</th></tr></thead>
                 <tbody>${rows}</tbody>
             </table>
         `;
-        document.querySelectorAll('button[data-edit]').forEach(btn => {
-            const mapping = mappings.find(m => m.id === Number(btn.dataset.edit));
-            btn.addEventListener('click', () => openMappingModal(mapping));
-        });
-        document.querySelectorAll('button[data-delete]').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                if (!confirm('Видалити мапінг?')) return;
-                try {
-                    const response = await fetchJson(`/api/category-mappings/${btn.dataset.delete}${getMappingQueryString()}`, { method: 'DELETE' });
-                    applyMappingResponse(response, 'Мапінг видалено');
-                } catch (err) {
-                    setStatus('mappingStatus', 'Помилка: ' + err.message, 'error');
-                }
-            });
+        document.getElementById('mappingTable').innerHTML = tableHtml;
+        document.getElementById('mappingTable').querySelectorAll('button[data-action]').forEach(btn => {
+            btn.addEventListener('click', () => handleMappingAction(btn.dataset.action, Number(btn.dataset.id)));
         });
     }
 
-    document.getElementById('historyPrev').addEventListener('click', () => changeHistoryPage(-1));
-    document.getElementById('historyNext').addEventListener('click', () => changeHistoryPage(1));
+    document.getElementById('createMappingBtn').addEventListener('click', () => {
+        const refCat = document.getElementById('mappingReferenceCategory');
+        const targetCat = document.getElementById('mappingTargetCategory');
+        const matchType = document.getElementById('mappingMatchType');
+        const confidence = document.getElementById('mappingConfidence');
+        const statusId = 'mappingStatus';
+        const mappingData = {
+            reference_category_id: refCat.value,
+            target_category_id: targetCat.value,
+            match_type: matchType.value.trim() || null,
+            confidence: confidence.value ? parseFloat(confidence.value) : null,
+        };
+        if (!mappingData.reference_category_id || !mappingData.target_category_id) {
+            return setStatus(statusId, 'Оберіть категорії для мапінгу', 'warning');
+        }
+        setStatus(statusId, 'Створення мапінгу…', 'warning');
+        fetchJson('/api/mappings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(mappingData),
+        })
+        .then(data => {
+            setStatus(statusId, 'Мапінг створено', 'success');
+            loadMappings();
+            // close dialog if open
+            const dialog = document.getElementById('mappingModal');
+            if (dialog.open) {
+                dialog.close();
+                // reset form fields
+                dialog.querySelector('form').reset();
+                clearInlineStatus();
+            }
+        })
+        .catch(err => setStatus(statusId, 'Помилка створення мапінгу: ' + err.message, 'error'));
+    });
 
-    function changeHistoryPage(delta) {
-        const nextPage = serviceState.history.page + delta;
-        if (nextPage < 0) return;
-        serviceState.history.page = nextPage;
-        loadHistory();
-    }
-
-    async function loadHistory(resetPage = false) {
-        if (resetPage) serviceState.history.page = 0;
-        const params = new URLSearchParams();
-        const storeId = document.getElementById('historyStoreFilter').value;
-        const runType = document.getElementById('historyTypeFilter').value;
-        const status = document.getElementById('historyStatusFilter').value;
-        if (storeId) params.append('store_id', storeId);
-        if (runType) params.append('run_type', runType);
-        if (status) params.append('status', status);
-        params.append('limit', serviceState.history.pageSize);
-        params.append('offset', serviceState.history.page * serviceState.history.pageSize);
-        setStatus('historyStatus', 'Завантаження…', 'warning');
-        try {
-            const data = await fetchJson(`/api/scrape-runs?${params}`);
-            renderHistory(data.runs || []);
-            const label = document.getElementById('historyPageLabel');
-            label.textContent = `Сторінка ${serviceState.history.page + 1}`;
-            setStatus('historyStatus', `Рядів: ${data.runs.length}`, 'success');
-        } catch (err) {
-            setStatus('historyStatus', err.message, 'error');
+    function handleMappingAction(action, mappingId) {
+        if (action === 'edit') {
+            editMapping(mappingId);
+        } else if (action === 'delete') {
+            deleteMapping(mappingId);
         }
     }
 
-    function renderHistory(runs) {
-        if (!runs.length) {
-            document.getElementById('historyTable').innerHTML = '<p class="muted">Дані відсутні.</p>';
+    function editMapping(mappingId) {
+        const mapping = serviceState.mappings.find(m => m.id === mappingId);
+        if (!mapping) return;
+        document.getElementById('mappingModalTitle').textContent = 'Редагувати мапінг';
+        document.getElementById('mappingReferenceCategory').value = mapping.reference_category_id;
+        document.getElementById('mappingTargetCategory').value = mapping.target_category_id;
+        document.getElementById('mappingMatchType').value = mapping.match_type || '';
+        document.getElementById('mappingConfidence').value = mapping.confidence != null ? (mapping.confidence * 100) : '';
+        const dialog = document.getElementById('mappingModal');
+        dialog.showModal();
+        dialog.querySelector('form').onsubmit = (e) => {
+            e.preventDefault();
+            updateMapping(mappingId);
+        };
+    }
+
+    function updateMapping(mappingId) {
+        const refCat = document.getElementById('mappingReferenceCategory');
+        const targetCat = document.getElementById('mappingTargetCategory');
+        const matchType = document.getElementById('mappingMatchType');
+        const confidence = document.getElementById('mappingConfidence');
+        const statusId = 'mappingStatus';
+        const mappingData = {
+            reference_category_id: refCat.value,
+            target_category_id: targetCat.value,
+            match_type: matchType.value.trim() || null,
+            confidence: confidence.value ? parseFloat(confidence.value) : null,
+        };
+        if (!mappingData.reference_category_id || !mappingData.target_category_id) {
+            return setStatus(statusId, 'Оберіть категорії для мапінгу', 'warning');
+        }
+        setStatus(statusId, 'Оновлення мапінгу…', 'warning');
+        fetchJson(`/api/mappings/${mappingId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(mappingData),
+        })
+        .then(() => {
+            setStatus(statusId, 'Мапінг оновлено', 'success');
+            loadMappings();
+            const dialog = document.getElementById('mappingModal');
+            if (dialog.open) {
+                dialog.close();
+                dialog.querySelector('form').reset();
+                clearInlineStatus();
+            }
+        })
+        .catch(err => setStatus(statusId, 'Помилка оновлення мапінгу: ' + err.message, 'error'));
+    }
+
+    function deleteMapping(mappingId) {
+        const statusId = 'mappingStatus';
+        if (!confirm('Ви впевнені, що хочете видалити цей мапінг?')) return;
+        setStatus(statusId, 'Видалення мапінгу…', 'warning');
+        fetchJson(`/api/mappings/${mappingId}`, { method: 'DELETE' })
+        .then(() => {
+            setStatus(statusId, 'Мапінг видалено', 'success');
+            loadMappings();
+        })
+        .catch(err => setStatus(statusId, 'Помилка видалення мапінгу: ' + err.message, 'error'));
+    }
+
+    async function loadHistory(reset = false) {
+        const statusId = 'historyStatus';
+        if (reset) {
+            serviceState.history.page = 0;
+            document.getElementById('historyTable').innerHTML = '';
+        }
+        const { page, pageSize } = serviceState.history;
+        const storeId = serviceState.targetStoreId;
+        setStatus(statusId, 'Завантаження історії…', 'warning');
+        try {
+            const data = await fetchJson(`/api/stores/${storeId}/history?page=${page}&size=${pageSize}`);
+            serviceState.history.page = data.page;
+            serviceState.history.pageSize = data.pageSize;
+            renderHistoryTable(data.items || []);
+            setStatus(statusId, `Історія завантажена: ${data.items.length} записів`, 'success');
+            document.getElementById('historyPageLabel').textContent = `Сторінка ${page + 1}`;
+        } catch (err) {
+            setStatus(statusId, 'Помилка завантаження історії: ' + err.message, 'error');
+            document.getElementById('historyTable').innerHTML = '';
+        }
+    }
+
+    function renderHistoryTable(items) {
+        if (!items.length) {
+            document.getElementById('historyTable').innerHTML = '<p class="muted">Немає записів історії. Синхронізуйте дані.</p>';
             return;
         }
-        const rows = runs.map(run => `
+        const rows = items.map(item => `
             <tr>
-                <td>${run.id}</td>
-                <td>${run.store?.name || '—'}</td>
-                <td>${run.run_type || '—'}</td>
-                <td><span class="status-pill ${run.status === 'failed' ? 'status-error' : run.status === 'running' ? 'status-warning' : 'status-success'}">${run.status}</span></td>
-                <td>${run.started_at ? new Date(run.started_at).toLocaleString() : '—'}</td>
-                <td>${run.finished_at ? new Date(run.finished_at).toLocaleString() : '—'}</td>
-                <td>${run.products_processed}</td>
-                <td>${run.products_created}</td>
-                <td>${run.products_updated}</td>
-                <td class="actions"><button class="ghost" data-run="${run.id}">Деталі</button></td>
+                <td>${new Date(item.created_at).toLocaleString()}</td>
+                <td>${item.store_name}</td>
+                <td>${item.type === 'categories' ? 'Категорії' : 'Товари категорій'}</td>
+                <td>${item.status}</td>
+                <td>
+                    <button class="ghost" data-id="${item.id}" data-action="details">Деталі</button>
+                </td>
             </tr>
         `).join('');
-        document.getElementById('historyTable').innerHTML = `
+        const tableHtml = `
             <table>
-                <thead><tr><th>ID</th><th>Store</th><th>Type</th><th>Статус</th><th>Початок</th><th>Кінець</th><th>Processed</th><th>Created</th><th>Updated</th><th></th></tr></thead>
+                <thead><tr><th>Дата</th><th>Магазин</th><th>Тип</th><th>Статус</th><th>Дії</th></tr></thead>
                 <tbody>${rows}</tbody>
             </table>
         `;
-        document.querySelectorAll('button[data-run]').forEach(btn => {
-            btn.addEventListener('click', () => showRunDetails(btn.dataset.run));
+        document.getElementById('historyTable').innerHTML = tableHtml;
+        document.getElementById('historyTable').querySelectorAll('button[data-action]').forEach(btn => {
+            btn.addEventListener('click', () => handleHistoryAction(btn.dataset.action, Number(btn.dataset.id)));
         });
     }
 
-    const runDetailsModal = document.getElementById('runDetailsModal');
-    document.getElementById('runDetailsClose').addEventListener('click', () => runDetailsModal.close());
-
-    async function showRunDetails(runId) {
-        try {
-            const data = await fetchJson(`/api/scrape-runs/${runId}`);
-            document.getElementById('runDetails').textContent = JSON.stringify(data.run, null, 2);
-            runDetailsModal.showModal();
-        } catch (err) {
-            setStatus('historyStatus', 'Не вдалося отримати деталі: ' + err.message, 'error');
+    document.getElementById('historyPrev').addEventListener('click', () => {
+        if (serviceState.history.page > 0) {
+            serviceState.history.page--;
+            loadHistory();
         }
-    }
+    });
 
-    async function loadScrapeStatus() {
-        try {
-            const data = await fetchJson('/api/scrape-status?status=running&limit=5');
-            renderScrapeStatus(data.runs || []);
-        } catch (err) {
-            document.getElementById('scrapeStatusList').innerHTML = `<div class="status-pill status-error">${err.message}</div>`;
-        }
-    }
-
-    function renderScrapeStatus(runs) {
-        if (!runs.length) {
-            document.getElementById('scrapeStatusList').innerHTML = '<div class="status-pill status-info">Немає активних запусків</div>';
-            return;
-        }
-        document.getElementById('scrapeStatusList').innerHTML = runs.map(run => `
-            <div class="scrape-status-card ${run.status}">
-                <strong>#${run.id} · ${run.store?.name || '—'}</strong>
-                <div>${run.run_type}</div>
-                <div class="muted">${run.started_at ? new Date(run.started_at).toLocaleTimeString() : ''}</div>
-            </div>
-        `).join('');
-    }
-
-    document.addEventListener('DOMContentLoaded', async () => {
-        const storeSyncControls = document.getElementById('storeSyncControls');
-        if (SERVICE_CONFIG.enableAdminSync) {
-            storeSyncControls?.classList.remove('hidden');
-            const syncStoresBtn = document.getElementById('syncStoresBtn');
-            syncStoresBtn?.addEventListener('click', syncStores);
-            setStoreSyncStatus('Готово до синхронізації', 'info');
-        } else {
-            setStoreSyncStatus('Адмінська синхронізація вимкнена', 'error');
-        }
-        await initStores();
-        loadScrapeStatus();
+    document.getElementById('historyNext').addEventListener('click', () => {
+        serviceState.history.page++;
         loadHistory();
-        setInterval(loadScrapeStatus, 15000);
+    });
+
+    function handleHistoryAction(action, historyId) {
+        if (action === 'details') {
+            showRunDetails(historyId);
+        }
+    }
+
+    function showRunDetails(historyId) {
+        const statusId = 'runDetailsStatus';
+        setStatus(statusId, 'Завантаження деталей…', 'warning');
+        fetchJson(`/api/history/${historyId}`)
+        .then(data => {
+            document.getElementById('runDetails').textContent = JSON.stringify(data, null, 2);
+            setStatus(statusId, '', 'info');
+        })
+        .catch(err => setStatus(statusId, 'Помилка завантаження деталей: ' + err.message, 'error'));
+        const dialog = document.getElementById('runDetailsModal');
+        dialog.showModal();
+    }
+
+    document.getElementById('runDetailsClose').addEventListener('click', () => {
+        const dialog = document.getElementById('runDetailsModal');
+        if (dialog.open) {
+            dialog.close();
+        }
+    });
+
+    // initial load
+    initStores().then(() => {
+        loadCategoriesTable('reference');
+        loadCategoriesTable('target');
+        loadMappings();
+        loadHistory();
+        loadScrapeStatus();
     });
 </script>
 </body>
 </html>
-

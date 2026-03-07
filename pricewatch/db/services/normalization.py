@@ -25,13 +25,3 @@ def normalize_category_name(raw_name: str) -> str:
 
 
 __all__ = ["normalize_product_name", "normalize_category_name"]
-
-def normalize_category_name(raw_name: str) -> str:
-    """Normalize category name.
-
-    Uses shared normalize_title helper to keep consistency with existing logic.
-    """
-    return normalize_title(raw_name or "")
-
-
-__all__ = ["normalize_product_name", "normalize_category_name"]
