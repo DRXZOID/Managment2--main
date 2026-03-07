@@ -75,7 +75,62 @@ python parser.py
 python app.py
 ```
 
-Застосунок буде доступний за адресою http://localhost:5000
+Доступно на http://localhost:5000. Головна сторінка тепер читає ТІЛЬКИ БД (жодного прямого скрапінгу) й дозволяє обрати reference/target магазини, категорії та переглянути товари. Для запуску синхронізацій, редагування мапінгів і перегляду історії використовуйте `/service`.
+
+## Адмінський UI
+
+- `/` — користувацька сторінка. Всі дані зчитуються з `stores/categories/products` таблиць. Якщо записи застарілі, користувач бачить підказку перейти на сервісну панель.
+- `/service` — операційна панель з трьома вкладками: Категорії (синхронізація та запуск скрапу), Мапінги (CRUD для category_mappings) та Історія (таблиця scrape_runs з пагінацією та REST-полінгом `/api/scrape-status`).
+
+### Адмінська синхронізація магазинів
+
+- `/api/stores` читає тільки з бази (`StoreService.sync_with_registry` більше не викликається всередині GET-запитів).
+- Сторінку `/service` доповнено кнопкою для ручного запиту `POST /api/admin/stores/sync`, який ітерує registry, оновлює записи та повертає вже збережені магазини.
+- Поведінка ручної синхронізації керується конфіг-флагом `ENABLE_ADMIN_SYNC` (за замовчуванням `True`). Якщо він `False`, адмінський endpoint повертає 404 і UI ховає контрол для синхронізації.
+
+### `scrape_run.metadata_json`
+
+`Fail`/`success` метадані тепер містять діагностичні лічильники та обмежений список прикладів помилок:
+
+- `skipped_invalid_products` — загальна кількість товарів, які не було збережено (причинами можуть бути відсутня назва, URL та ін.).
+- `skipped_missing_url` — підмножина, де причиною було відсутнє або пусте `product_url`.
+- `validation_error_counts` — мапа вигляду `reason -> count` для швидкого отримання частот помилок.
+- `validation_errors_sample` — обмежений (10 записів) список прикладів, що містить `type`, `message` та додаткові поля (`product_name`, `product_url`, `source_url`, `adapter_name`, `category_id`, `category_name`).
+
+Детальний лог протоколює`reason`, `adapter_name`, `store_id`, `category_id`, `product_name` та `source_url` через сислог `warning`.
+
+## База даних та міграції
+
+- ORM: SQLAlchemy 2.x, SQLite за замовчуванням (`sqlite:///pricewatch.db`), легка міграція на PostgreSQL через `DATABASE_URL`.
+- Ініціалізація: при старті створюються таблиці, крім випадків `FLASK_ENV=production` або `DB_SKIP_CREATE_ALL=1`.
+- Налаштування через ENV/Flask config:
+  - `DATABASE_URL` — рядок підключення (наприклад, `postgresql+psycopg2://user:pass@host/db` або in-memory для тестів `sqlite+pysqlite:///:memory:`).
+  - `DB_DEBUG_SQL` — `1/true` вмикає SQL echo.
+  - `DB_SKIP_CREATE_ALL` — пропускає автосоздання таблиць.
+  - `FLASK_ENV=production` — також пропускає автосоздання таблиць.
+
+### Alembic
+
+```bash
+export DATABASE_URL=sqlite:///pricewatch.db   # або свій URL
+PYTHONPATH=. alembic upgrade head
+```
+
+Щоб створити нову міграцію після змін у `pricewatch/db/models.py`:
+
+```bash
+PYTHONPATH=. alembic revision --autogenerate -m "short description"
+```
+
+Далі застосуйте `PYTHONPATH=. alembic upgrade head`.
+
+### Приклад сценарію
+
+`examples/db_usage.py` показує: створення магазинів, запуск scrape_run, upsert категорій/товарів, запис історії цін і створення маппінгів. Запуск:
+
+```bash
+python examples/db_usage.py
+```
 
 ## Тести
 
@@ -157,46 +212,18 @@ pip install -r requirements.txt
 
 ## Структура проєкту
 
-### API
-
-* `GET /api/categories` — повертає масив slug-ів категорій із референсного сайту.  
-* `POST /api/check` — перевіряє відсутні товари на `prohockey.com.ua` для наданих URL.  
-* `POST /api/scrape` — повертає `501` (залишено як заглушку).  
-
-### Плагінна архітектура
-
-- `pricewatch/core` — ядро: пагінація, витяг даних, нормалізація, порівняння.  
-- `pricewatch/shops/<shop>/adapter.py` — адаптер конкретного магазину.  
-- `pricewatch/core/plugin_loader.py` — автодискавері адаптерів.  
-- `pricewatch/core/registry.py` — реєстр плагінів, вибір адаптера за URL.  
-- `pricewatch/core/generic_adapter.py` — fallback-парсер для невідомих доменів.  
-
-TODO: замінити CSS-селектори в адаптерах на YAML-шаблони (`pricewatch/shops/<shop>/templates/*.yaml`)
-
 ```
 Managment2--main/
-│
-├── app.py                          # Основний Flask сервер
-├── parser.py                       # Сумісний фасад (реекспорт API)
+├── app.py                          # Flask сервер + init DB
+├── parser.py                       # сумісний фасад
 ├── http_client.py                  # HTTP клієнт/обгортка
 ├── pricewatch/
-│   ├── core/
-│   │   ├── models.py               # ProductItem, ParsedPrice
-│   │   ├── normalize.py            # Нормалізація та порівняння
-│   │   ├── extract.py              # Витяг з HTML/JSON
-│   │   ├── pagination.py           # Пагінація
-│   │   ├── plugin_base.py          # BaseShopAdapter
-│   │   ├── plugin_loader.py        # discover_adapters()
-│   │   ├── registry.py             # ShopRegistry
-│   │   ├── reference_service.py    # Побудова каталогу референса
-│   │   └── generic_adapter.py      # Fallback-адаптер
-│   └── shops/
-│       ├── prohockey/adapter.py    # Референсний адаптер
-│       ├── hockeyshans/adapter.py
-│       ├── hockeyshop/adapter.py
-│       └── hockeyworld/adapter.py
-├── templates/
-│   └── index.html                  # Фронтенд
+│   ├── core/                       # ядро парсингу/нормалізації
+│   ├── db/                         # SQLAlchemy моделі, конфіг, репозиторії, тести
+│   └── shops/                      # адаптери магазинів
+├── migrations/                     # Alembic env + versions/
+├── examples/db_usage.py            # приклад роботи з БД
+├── templates/                      # фронтенд
 └── README.md
 ```
 
@@ -247,3 +274,25 @@ MIT
 ## Контакт
 
 Якщо у вас є питання — відкрийте issue.
+
+## Product DTO контракт (важно)
+
+При синхронізації товарів сервис предпочитает явні значення з DTO по наступному правилу:
+
+- `price` (числове значення) — переважне поле; якщо присутнє і валідне, використовується напряму.
+- `price_raw` — використовується як запасний варіант, коли `price` не задане; розпізнавання витягує числову частину і валюту.
+- `currency` — якщо вказана явно в DTO, має пріоритет над розпізнаною з `price_raw`.
+- `source_url` — надається перевага для атрибута джерела; legacy-поля (`source_site`, `url`) використовуються лише як fallback.
+
+Сервис підтримує і словникові об'єкти, і об'єктні DTO (SimpleNamespace-совместимі).
+
+
+## Правила валидації маппінгів
+
+Backend на етапі створення маппінга (`POST /api/category-mappings`) виконує доменні перевірки:
+
+- `reference_category_id` повинен належати категорії в reference store (store.is_reference == True).
+- `target_category_id` не повинен належати reference store.
+- reference і target категорії не повинні належати одному і тому ж магазині.
+
+При редагуванні маппінга (`PUT /api/category-mappings/<id>`) пара категорій незмінна — дозволено змінювати лише метадані (наприклад `match_type`, `confidence`).
