@@ -41,29 +41,4 @@ def test_admin_store_sync_endpoint(monkeypatch):
     monkeypatch.setitem(app_module.app.config, 'ENABLE_ADMIN_SYNC', False)
     resp_disabled = client.post('/api/admin/stores/sync')
     assert resp_disabled.status_code == 404
-from types import SimpleNamespace
-import importlib
-
-app_module = importlib.import_module("app")
-from pricewatch.services.store_service import StoreService
-
-
-
-
-from types import SimpleNamespace
-import importlib
-
-app_module = importlib.import_module("app")
-from pricewatch.services.store_service import StoreService
-
-
-
-
-from types import SimpleNamespace
-import importlib
-
-app_module = importlib.import_module("app")
-from pricewatch.services.store_service import StoreService
-
-
 

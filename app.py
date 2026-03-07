@@ -109,11 +109,6 @@ def _decode_escapes(s):
 def index():
     return render_template('index.html')
 
-@app.route('/api/scrape', methods=['POST'])
-def scrape():
-    # keep the old scrape behaviour for backwards compatibility
-    # (it still powers the previous comparison UI if needed)
-    return "not implemented", 501
 
 @app.route('/api/adapters', methods=['GET'])
 def adapters_list():
@@ -161,6 +156,15 @@ def categories_list():
 
 @app.route('/api/reference-products', methods=['GET'])
 def reference_products():
+    """[LEGACY / INTERNAL] Return reference-store products by category via live scraping.
+
+    This endpoint performs direct scraping of the reference adapter and is kept only
+    as a debug/internal fallback.  It is NOT part of the main DB-first flow.
+    The main page reads products from the DB via /api/stores/<id>/categories and
+    /api/categories/<id>/products.
+
+    TODO: remove once the main page no longer requires a live-scraping fallback.
+    """
     category = (request.args.get('category') or '').strip()
     if not category:
         return jsonify({'error': 'category query parameter is required'}), 400
@@ -212,6 +216,15 @@ def reference_products():
 
 @app.route('/api/check', methods=['POST'])
 def check_missing():
+    """[LEGACY / INTERNAL] Scrape provided URLs and compare products against the reference store.
+
+    This endpoint performs live scraping of arbitrary URLs and is kept only as a
+    debug/internal compatibility shim for old API clients.  It is NOT part of the
+    main DB-first architecture.  New code should use /api/comparison which reads
+    products from the database.
+
+    TODO: remove once all clients have migrated to the DB-first comparison flow.
+    """
     logger.info("%s", "=" * 50)
     logger.info("📨 Received check request")
     if not request.is_json:
@@ -291,7 +304,11 @@ def check_missing():
 
 @app.route('/api/parse-example', methods=['POST'])
 def parse_example():
-    """Парсит пример товаров для демонстрации"""
+    """[LEGACY / INTERNAL] Parse a raw HTML table fragment and return structured rows.
+
+    Debug helper only; not part of the main DB-first flow.
+    TODO: remove when no longer needed for manual testing.
+    """
     data = request.json
     html_content = data.get('html', '')
     
@@ -603,6 +620,16 @@ def api_get_run(run_id: int):
 
 @app.route('/api/comparison', methods=['POST'])
 def api_comparison():
+    """Compare products from two DB-backed categories.
+
+    Both reference and target products are read from the database (DB-first).
+    The matching step currently delegates to `product_exists_on_main` which is a
+    transitional normalisation utility.
+
+    TODO: replace `product_exists_on_main` with a dedicated ComparisonService that
+    operates directly on DB rows and optionally applies category_mappings weights.
+    Response contract is stable and must not change without updating API docs.
+    """
     if not request.is_json:
         return jsonify({'error': 'Request must be JSON'}), 400
     payload = request.get_json() or {}
