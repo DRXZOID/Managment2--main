@@ -1,4 +1,5 @@
 import re
+import logging
 from urllib.parse import urlparse, urljoin
 from typing import List, Dict, Any
 
@@ -8,6 +9,8 @@ from pricewatch.core.plugin_base import BaseShopAdapter
 from pricewatch.core.pagination import paginate_and_collect
 from pricewatch.core.models import ProductItem
 from pricewatch.core.category_discovery import find_category_page
+
+logger = logging.getLogger(__name__)
 
 
 class HockeyShansAdapter(BaseShopAdapter):
@@ -103,7 +106,7 @@ class HockeyShansAdapter(BaseShopAdapter):
         try:
             resp = client.safe_get(base, session=client.session)
         except Exception as exc:
-            print(f"get_categories: failed to fetch {base}: {exc}")
+            logger.warning("get_categories: failed to fetch %s: %s", base, exc)
             return []
 
         if not resp:

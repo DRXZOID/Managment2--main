@@ -139,3 +139,40 @@ def test_delete_mapping_returns_refreshed_list(monkeypatch):
     assert payload['deleted'] is True
     assert calls['deleted']
     assert payload['mappings'] == []
+
+
+def test_update_mapping_ignores_category_ids(monkeypatch):
+    """PUT /api/category-mappings/<id> must only forward match_type/confidence,
+    never reference_category_id or target_category_id (pair is immutable)."""
+    updated = _make_mapping(5)
+    received = {}
+
+    def fake_update(self, mapping_id, match_type=None, confidence=None):
+        received['mapping_id'] = mapping_id
+        received['match_type'] = match_type
+        received['confidence'] = confidence
+        # must NOT receive category ids — the route only passes match_type/confidence
+        return updated
+
+    def fake_list(self, **kw):
+        return [updated]
+
+    monkeypatch.setattr(MappingService, 'update_category_mapping', fake_update)
+    monkeypatch.setattr(MappingService, 'list_category_mappings', fake_list)
+
+    resp = app.test_client().put(
+        '/api/category-mappings/5',
+        json={
+            'reference_category_id': 999,   # must be silently ignored by route
+            'target_category_id': 888,       # same
+            'match_type': 'manual',
+            'confidence': 0.9,
+        },
+    )
+    assert resp.status_code == 200
+    # route must only pass match_type and confidence, not category IDs
+    assert received['match_type'] == 'manual'
+    assert received['confidence'] == 0.9
+    assert 'reference_category_id' not in received
+    assert 'target_category_id' not in received
+

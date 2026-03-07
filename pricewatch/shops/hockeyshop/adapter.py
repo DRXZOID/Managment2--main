@@ -1,10 +1,13 @@
 import re
+import logging
 from urllib.parse import urlparse, urljoin
 
 from pricewatch.core.plugin_base import BaseShopAdapter
 from pricewatch.core.models import ProductItem
 from bs4 import BeautifulSoup
 from typing import List, Dict, Any
+
+logger = logging.getLogger(__name__)
 
 
 class HockeyShopAdapter(BaseShopAdapter):
@@ -84,7 +87,7 @@ class HockeyShopAdapter(BaseShopAdapter):
         """
         current = url if url.startswith('http') else 'https://' + url
         start_url = current
-        print(f"HockeyShopAdapter.scrape_url: fetching {current} (category={category})")
+        logger.info("HockeyShopAdapter.scrape_url: fetching %s (category=%s)", current, category)
 
         items = []
         visited = set()
@@ -120,7 +123,7 @@ class HockeyShopAdapter(BaseShopAdapter):
                 if node.select_one('div.item-info div.item-title a') or node.select_one('a.product-link') or node.select_one('a[href*="/p/"]'):
                     filtered.append(node)
 
-            print(f"  -> page {page_count}: found {len(filtered)} product nodes (raw {len(product_nodes)}) on {current}")
+            logger.info("page %d: found %d product nodes (raw %d) on %s", page_count, len(filtered), len(product_nodes), current)
 
             for node in filtered:
                 # anchor/title inside the product item (user-provided path)
@@ -141,7 +144,7 @@ class HockeyShopAdapter(BaseShopAdapter):
             if not next_href:
                 break
             next_url = urljoin(start_url, next_href)
-            print(f"  -> pagination: next page found -> {next_url}")
+            logger.info("pagination: next page found -> %s", next_url)
             current = next_url
 
         # If category provided, filter by keyword as last resort
@@ -151,7 +154,7 @@ class HockeyShopAdapter(BaseShopAdapter):
         #     items = [it for it in items if key in (it.name or '').lower() or key in (it.url or '').lower()]
         #     print(f"  -> filtered {before} -> {len(items)} items using category '{category}'")
 
-        print(f"  -> returning {len(items)} items")
+        logger.info("returning %d items", len(items))
         return items
 
     def get_categories(self, client):
@@ -163,7 +166,7 @@ class HockeyShopAdapter(BaseShopAdapter):
         try:
             resp = client.safe_get(base, session=client.session)
         except Exception as exc:
-            print(f"get_categories: failed to fetch {base}: {exc}")
+            logger.warning("get_categories: failed to fetch %s: %s", base, exc)
             return []
 
         if not resp:
