@@ -11,7 +11,11 @@ Usage::
         reference_store_id=1,
         target_store_id=2,
     )
-    # result == {"created": N, "skipped": N}
+    # result == {
+    #   "created": [{...}, ...],
+    #   "skipped_existing": [{...}, ...],
+    #   "summary": {"created": N, "skipped_existing": N, "skipped_no_norm": N}
+    # }
 """
 from __future__ import annotations
 
@@ -33,7 +37,6 @@ logger = logging.getLogger(__name__)
 class CategoryMatchingService:
     """Auto-link category pairs by exact normalized_name match."""
 
-    # Set to False to disable exact auto-linking at the class level.
     ENABLE_EXACT_AUTO_LINK: bool = True
 
     @classmethod
@@ -54,10 +57,33 @@ class CategoryMatchingService:
 
         Returns::
 
-            {"created": int, "skipped": int}
+            {
+              "created": [
+                  {
+                    "reference_category_id": int,
+                    "reference_category_name": str,
+                    "target_category_id": int,
+                    "target_category_name": str,
+                    "match_type": "exact",
+                    "confidence": 1.0
+                  }, ...
+              ],
+              "skipped_existing": [
+                  {"reference_category_id": int, "target_category_id": int}, ...
+              ],
+              "summary": {
+                  "created": int,
+                  "skipped_existing": int,
+                  "skipped_no_norm": int
+              }
+            }
         """
         if not cls.ENABLE_EXACT_AUTO_LINK:
-            return {"created": 0, "skipped": 0}
+            return {
+                "created": [],
+                "skipped_existing": [],
+                "summary": {"created": 0, "skipped_existing": 0, "skipped_no_norm": 0},
+            }
 
         ref_store = session.get(Store, reference_store_id)
         tgt_store = session.get(Store, target_store_id)
@@ -85,13 +111,14 @@ class CategoryMatchingService:
             norm = cat.normalized_name or ""
             tgt_by_norm.setdefault(norm, []).append(cat)
 
-        created = 0
-        skipped = 0
+        created_list: list[dict[str, Any]] = []
+        skipped_existing_list: list[dict[str, Any]] = []
+        skipped_no_norm = 0
 
         for ref_cat in ref_cats:
             ref_norm = ref_cat.normalized_name or ""
             if not ref_norm:
-                skipped += 1
+                skipped_no_norm += 1
                 continue
 
             matched_tgt_cats = tgt_by_norm.get(ref_norm, [])
@@ -102,7 +129,10 @@ class CategoryMatchingService:
                     target_category_id=tgt_cat.id,
                 )
                 if existing:
-                    skipped += 1
+                    skipped_existing_list.append({
+                        "reference_category_id": ref_cat.id,
+                        "target_category_id": tgt_cat.id,
+                    })
                     logger.debug(
                         "auto_link: skipped existing mapping ref_cat=%d tgt_cat=%d",
                         ref_cat.id, tgt_cat.id,
@@ -116,11 +146,25 @@ class CategoryMatchingService:
                     match_type="exact",
                     confidence=1.0,
                 )
-                created += 1
+                created_list.append({
+                    "reference_category_id": ref_cat.id,
+                    "reference_category_name": ref_cat.name,
+                    "target_category_id": tgt_cat.id,
+                    "target_category_name": tgt_cat.name,
+                    "match_type": "exact",
+                    "confidence": 1.0,
+                })
                 logger.info(
                     "auto_link: created mapping '%s' (ref_cat=%d) -> '%s' (tgt_cat=%d)",
                     ref_cat.name, ref_cat.id, tgt_cat.name, tgt_cat.id,
                 )
 
-        return {"created": created, "skipped": skipped}
-
+        return {
+            "created": created_list,
+            "skipped_existing": skipped_existing_list,
+            "summary": {
+                "created": len(created_list),
+                "skipped_existing": len(skipped_existing_list),
+                "skipped_no_norm": skipped_no_norm,
+            },
+        }

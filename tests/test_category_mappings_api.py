@@ -239,14 +239,23 @@ def test_mapped_target_categories_empty(monkeypatch):
 # ---------------------------------------------------------------------------
 
 def test_auto_link_returns_created_and_skipped(monkeypatch):
-    """POST /api/category-mappings/auto-link returns {created, skipped}."""
+    """POST /api/category-mappings/auto-link returns rich response with summary."""
     from app import app as flask_app
     from pricewatch.services.category_matching_service import CategoryMatchingService
 
+    fake_result = {
+        "created": [
+            {"reference_category_id": 1, "reference_category_name": "Skates",
+             "target_category_id": 5, "target_category_name": "Skates",
+             "match_type": "exact", "confidence": 1.0},
+        ],
+        "skipped_existing": [],
+        "summary": {"created": 1, "skipped_existing": 0, "skipped_no_norm": 0},
+    }
     monkeypatch.setattr(
         CategoryMatchingService,
         "auto_link",
-        staticmethod(lambda session, *, reference_store_id, target_store_id: {"created": 3, "skipped": 1}),
+        staticmethod(lambda session, *, reference_store_id, target_store_id: fake_result),
     )
 
     resp = flask_app.test_client().post(
@@ -255,8 +264,13 @@ def test_auto_link_returns_created_and_skipped(monkeypatch):
     )
     assert resp.status_code == 200
     data = resp.get_json()
-    assert data["created"] == 3
-    assert data["skipped"] == 1
+    assert "created" in data
+    assert "skipped_existing" in data
+    assert "summary" in data
+    assert data["summary"]["created"] == 1
+    assert data["summary"]["skipped_existing"] == 0
+    assert isinstance(data["created"], list)
+    assert data["created"][0]["match_type"] == "exact"
 
 
 def test_auto_link_returns_400_when_ids_missing():

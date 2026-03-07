@@ -7,6 +7,7 @@ Covers:
   - Multiple reference categories -> one target category (many-to-many)
   - Store role validation (ref must be reference, target must not be)
   - Categories without normalized_name are skipped
+  - Response shape: created list, skipped_existing list, summary counts
 """
 from __future__ import annotations
 
@@ -39,8 +40,31 @@ class TestAutoLinkExactMatch:
                 target_store_id=tgt_store.id,
             )
 
-        assert result["created"] == 1
-        assert result["skipped"] == 0
+        assert result["summary"]["created"] == 1
+        assert result["summary"]["skipped_existing"] == 0
+        assert len(result["created"]) == 1
+        assert len(result["skipped_existing"]) == 0
+
+    def test_created_entry_has_expected_fields(self):
+        with _session_scope() as session:
+            ref_store, tgt_store, _ = _make_stores(session)
+            upsert_category(session, store_id=ref_store.id, name="Skates")
+            upsert_category(session, store_id=tgt_store.id, name="Skates")
+            session.flush()
+
+            result = CategoryMatchingService.auto_link(
+                session,
+                reference_store_id=ref_store.id,
+                target_store_id=tgt_store.id,
+            )
+
+        entry = result["created"][0]
+        assert entry["reference_category_name"] == "Skates"
+        assert entry["target_category_name"] == "Skates"
+        assert entry["match_type"] == "exact"
+        assert entry["confidence"] == 1.0
+        assert "reference_category_id" in entry
+        assert "target_category_id" in entry
 
     def test_no_mapping_created_when_names_differ(self):
         with _session_scope() as session:
@@ -55,7 +79,8 @@ class TestAutoLinkExactMatch:
                 target_store_id=tgt_store.id,
             )
 
-        assert result["created"] == 0
+        assert result["summary"]["created"] == 0
+        assert result["created"] == []
 
     def test_no_duplicate_on_repeated_call(self):
         with _session_scope() as session:
@@ -75,9 +100,27 @@ class TestAutoLinkExactMatch:
                 target_store_id=tgt_store.id,
             )
 
-        assert r1["created"] == 1
-        assert r2["created"] == 0
-        assert r2["skipped"] >= 1
+        assert r1["summary"]["created"] == 1
+        assert r2["summary"]["created"] == 0
+        assert r2["summary"]["skipped_existing"] >= 1
+        assert len(r2["skipped_existing"]) >= 1
+
+    def test_skipped_existing_entry_has_category_ids(self):
+        with _session_scope() as session:
+            ref_store, tgt_store, _ = _make_stores(session)
+            ref_cat = upsert_category(session, store_id=ref_store.id, name="Pucks")
+            tgt_cat = upsert_category(session, store_id=tgt_store.id, name="Pucks")
+            session.flush()
+            # first call creates
+            CategoryMatchingService.auto_link(
+                session, reference_store_id=ref_store.id, target_store_id=tgt_store.id)
+            # second call skips
+            r2 = CategoryMatchingService.auto_link(
+                session, reference_store_id=ref_store.id, target_store_id=tgt_store.id)
+
+        skip = r2["skipped_existing"][0]
+        assert skip["reference_category_id"] == ref_cat.id
+        assert skip["target_category_id"] == tgt_cat.id
 
     def test_mapping_has_exact_match_type_and_confidence_1(self):
         with _session_scope() as session:
@@ -97,6 +140,18 @@ class TestAutoLinkExactMatch:
         assert mappings[0].match_type == "exact"
         assert mappings[0].confidence == 1.0
 
+    def test_response_has_summary_key(self):
+        with _session_scope() as session:
+            ref_store, tgt_store, _ = _make_stores(session)
+            session.flush()
+            result = CategoryMatchingService.auto_link(
+                session, reference_store_id=ref_store.id, target_store_id=tgt_store.id)
+
+        assert "summary" in result
+        assert "created" in result["summary"]
+        assert "skipped_existing" in result["summary"]
+        assert "skipped_no_norm" in result["summary"]
+
 
 class TestAutoLinkOneToMany:
     def test_one_ref_category_maps_to_multiple_targets(self):
@@ -108,13 +163,11 @@ class TestAutoLinkOneToMany:
             upsert_category(session, store_id=tgt_store2.id, name="Sticks")
             session.flush()
 
-            # Auto-link ref -> tgt_store
             r1 = CategoryMatchingService.auto_link(
                 session,
                 reference_store_id=ref_store.id,
                 target_store_id=tgt_store.id,
             )
-            # Auto-link ref -> tgt_store2
             r2 = CategoryMatchingService.auto_link(
                 session,
                 reference_store_id=ref_store.id,
@@ -122,9 +175,8 @@ class TestAutoLinkOneToMany:
             )
             mappings = list_mapped_target_categories(session, ref_cat.id)
 
-        assert r1["created"] == 1
-        assert r2["created"] == 1
-        # Should have 2 mapped target categories (one per target store)
+        assert r1["summary"]["created"] == 1
+        assert r2["summary"]["created"] == 1
         assert len(mappings) == 2
 
     def test_mapping_rows_are_independent_pairs(self):
@@ -149,7 +201,7 @@ class TestAutoLinkOneToMany:
 
 class TestAutoLinkManyToMany:
     def test_multiple_ref_categories_map_to_same_target(self):
-        """Many-to-many: two ref categories can each map to the same target category name."""
+        """Many-to-many: two ref categories each map to their own same-named target."""
         with _session_scope() as session:
             ref_store, tgt_store, _ = _make_stores(session)
             ref_cat_a = upsert_category(session, store_id=ref_store.id, name="Blades")
@@ -167,10 +219,10 @@ class TestAutoLinkManyToMany:
             mappings_a = list_mapped_target_categories(session, ref_cat_a.id)
             mappings_b = list_mapped_target_categories(session, ref_cat_b.id)
 
-        assert result["created"] == 2
+        assert result["summary"]["created"] == 2
+        assert len(result["created"]) == 2
         assert len(mappings_a) == 1
         assert len(mappings_b) == 1
-        # Each ref category maps to its own target; they're independent rows
         assert mappings_a[0].target_category_id != mappings_b[0].target_category_id
 
 

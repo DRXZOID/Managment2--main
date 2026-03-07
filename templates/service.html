@@ -627,9 +627,9 @@
                     target_store_id: targetStoreId,
                 }),
             });
-            setStatus('mappingStatus',
-                `Авто-маппінг завершено: створено ${data.created}, пропущено ${data.skipped}`,
-                data.created > 0 ? 'success' : 'info');
+            const s = data.summary || {};
+            const msg = `Авто-маппінг завершено: створено ${s.created ?? 0}, вже існувало ${s.skipped_existing ?? 0}`;
+            setStatus('mappingStatus', msg, s.created > 0 ? 'success' : 'info');
             loadMappings();
         } catch (err) {
             setStatus('mappingStatus', 'Помилка авто-маппінгу: ' + err.message, 'error');

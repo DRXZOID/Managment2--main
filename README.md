@@ -91,9 +91,10 @@ python app.py
 | `GET` | `/api/stores` | Список магазинів з БД. **Тільки читання** — ніколи не запускає синхронізацію. |
 | `GET` | `/api/stores/<id>/categories` | Категорії магазину з БД. |
 | `GET` | `/api/categories/<id>/products` | Товари категорії з БД. |
+| `GET` | `/api/categories/<id>/mapped-target-categories` | Замаплені цільові категорії для обраної reference-категорії (з метаданими маппінгу). |
 | `GET` | `/api/adapters` | Список зареєстрованих адаптерів. |
 | `GET` | `/api/categories` | Категорії reference-магазину з БД. |
-| `POST` | `/api/comparison` | Порівняння двох категорій (дані з БД). |
+| `POST` | `/api/comparison` | Порівняння за маппінгами (дані з БД). `reference_category_id` обов'язковий, `target_category_id` — опціональний. |
 
 #### Service / admin
 
@@ -106,6 +107,7 @@ python app.py
 | `POST` | `/api/category-mappings` | Створити маппінг. Пара категорій незмінна після створення. |
 | `PUT` | `/api/category-mappings/<id>` | Змінити лише метадані (`match_type`, `confidence`). |
 | `DELETE` | `/api/category-mappings/<id>` | Видалити маппінг. |
+| `POST` | `/api/category-mappings/auto-link` | Авто-маппінг: автоматично створює `category_mappings` за точним збігом `normalized_name`. |
 | `GET` | `/api/scrape-runs` | Історія запусків. |
 | `GET` | `/api/scrape-runs/<id>` | Деталі конкретного запуску. |
 | `GET` | `/api/scrape-status` | Поточні/останні запуски (полінг для service page). |
@@ -140,6 +142,130 @@ python app.py
 - `validation_errors_sample` — обмежений (10 записів) список прикладів, що містить `type`, `message` та додаткові поля (`product_name`, `product_url`, `source_url`, `adapter_name`, `category_id`, `category_name`).
 
 Детальний лог протоколює`reason`, `adapter_name`, `store_id`, `category_id`, `product_name` та `source_url` через сислог `warning`.
+
+## Mapping-driven порівняння
+
+Порівняння категорій побудоване навколо **`category_mappings`** — таблиці зв'язків між reference і target категоріями.
+
+### Ключові правила
+
+- Порівняння **дозволено лише для замаплених пар** категорій.  
+  Якщо для вибраної reference-категорії немає жодного маппінгу — кнопка «Порівняти» заблокована, а API повертає `400`.
+- Маппінги підтримують **one-to-many** і **many-to-many**:  
+  одна reference-категорія може мати кілька target-категорій (і навпаки).
+- Дані порівняння читаються **виключно з БД** — без живого скрапінгу.
+
+### Сценарій використання
+
+1. Синхронізуйте категорії на `/service` → вкладка «Категорії».
+2. Створіть маппінги вручну (кнопка «Створити мапінг») або автоматично (кнопка «⚡ Авто-маппінг за назвою»).
+3. Відкрийте `/` → виберіть reference-магазин і категорію.
+4. У правому списку з'являться лише замаплені target-категорії.
+5. Натисніть «Порівняти категорії».
+
+### `POST /api/comparison`
+
+**Запит:**
+```json
+{
+  "reference_category_id": 1,
+  "target_category_id": 5
+}
+```
+`target_category_id` — **опціональний**. Якщо опущений — порівняння відбувається з усіма замапленими target-категоріями для даної reference-категорії.
+
+**Відповідь:**
+```json
+{
+  "reference_category": {"id": 1, "name": "Ковзани", "store_name": "RefShop", "is_reference": true},
+  "mapped_target_categories": [
+    {"target_category_id": 5, "name": "Ковзани", "match_type": "exact", "confidence": 1.0}
+  ],
+  "comparisons": [
+    {
+      "target_category": {"id": 5, "name": "Ковзани", "store_name": "TargetShop", "is_reference": false},
+      "summary": {
+        "reference_total": 12, "target_total": 10,
+        "matched": 8, "only_in_reference": 4, "only_in_target": 2, "ambiguous": 0
+      },
+      "matches": [
+        {"reference_product": {...}, "target_product": {...}, "score": 95.0, "match_source": "stored"}
+      ],
+      "ambiguous": [],
+      "only_in_reference": [...],
+      "only_in_target": [...]
+    }
+  ]
+}
+```
+
+**Помилки (400):**
+- `reference_category_id` не знайдено або не є reference store
+- `target_category_id` вказано, але пара не існує в `category_mappings`
+- `target_category_id` не вказано і маппінгів немає ("Для цієї категорії ще не створено меппінг")
+
+### `GET /api/categories/<id>/mapped-target-categories`
+
+Повертає список target-категорій, замаплених до обраної reference-категорії:
+
+```json
+{
+  "reference_category_id": 1,
+  "mapped_target_categories": [
+    {
+      "target_category_id": 5,
+      "name": "Ковзани",
+      "normalized_name": "kovzany",
+      "store_id": 2,
+      "store_name": "TargetShop",
+      "match_type": "exact",
+      "confidence": 1.0,
+      "mapping_id": 3
+    }
+  ]
+}
+```
+
+Використовується головною сторінкою для фільтрації target-категорій після вибору reference-категорії.
+
+### `POST /api/category-mappings/auto-link`
+
+Автоматично створює `category_mappings` на основі **точного збігу `normalized_name`** між reference і target категоріями:
+
+**Запит:**
+```json
+{"reference_store_id": 1, "target_store_id": 2}
+```
+
+**Відповідь:**
+```json
+{
+  "created": [
+    {
+      "reference_category_id": 1, "reference_category_name": "Ковзани",
+      "target_category_id": 5, "target_category_name": "Ковзани",
+      "match_type": "exact", "confidence": 1.0
+    }
+  ],
+  "skipped_existing": [
+    {"reference_category_id": 2, "target_category_id": 7}
+  ],
+  "summary": {"created": 1, "skipped_existing": 1, "skipped_no_norm": 0}
+}
+```
+
+- **Не створює дублікатів** — якщо маппінг вже існує, пара потрапляє в `skipped_existing`.
+- `skipped_no_norm` — кількість reference-категорій без `normalized_name`.
+- Кнопка **«⚡ Авто-маппінг за назвою»** на `/service` → «Мапінги» виконує цей запит.
+
+### Сортування матчів у відповіді `/api/comparison`
+
+| `match_source` | Значення |
+|---|---|
+| `stored` | Збережений `ProductMapping` (підтверджено вручну або через confirm-match). |
+| `heuristic` | Підібрано евристичним алгоритмом на основі нормалізованої назви. |
+
+Stored matches мають пріоритет — продукти, покриті `ProductMapping`, не потрапляють до heuristic-matching.
 
 ## База даних та міграції
 
