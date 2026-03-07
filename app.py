@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 from bs4 import BeautifulSoup
-from typing import cast
+from typing import Any, Dict, cast
 
 import logging
 
@@ -9,7 +9,6 @@ from pricewatch.core.registry import get_registry
 from pricewatch.core.reference_service import ReferenceCatalogBuilder
 from pricewatch.core.generic_adapter import GenericAdapter
 from pricewatch.core.normalize import (
-    product_exists_on_main,
     parse_price_value,
     normalize_title,
     MAIN_NORMALIZED,
@@ -20,13 +19,15 @@ from pricewatch.db.repositories import (
     list_stores,
     list_categories_by_store,
     list_products_by_category,
+    create_product_mapping,
 )
 from pricewatch.services.category_sync_service import CategorySyncService
 from pricewatch.services.product_sync_service import ProductSyncService
 from pricewatch.services.mapping_service import MappingService
 from pricewatch.services.scrape_history_service import ScrapeHistoryService
 from pricewatch.services.store_service import StoreService
-from pricewatch.db.models import Store
+from pricewatch.services.comparison_service import ComparisonService
+from pricewatch.db.models import Store, ProductMapping
 
 app = Flask(__name__)
 CORS(app)
@@ -618,50 +619,115 @@ def api_get_run(run_id: int):
     return jsonify({'run': _serialize_run(run)})
 
 
+def _serialize_product_mapping(pm: ProductMapping) -> dict:
+    ref = getattr(pm, "reference_product", None)
+    tgt = getattr(pm, "target_product", None)
+    return {
+        "id": pm.id,
+        "reference_product_id": pm.reference_product_id,
+        "target_product_id": pm.target_product_id,
+        "reference_product": _serialize_product(ref) if ref else None,
+        "target_product": _serialize_product(tgt) if tgt else None,
+        "match_status": pm.match_status,
+        "confidence": pm.confidence,
+        "comment": pm.comment,
+        "updated_at": pm.updated_at.isoformat() if pm.updated_at else None,
+    }
+
+
+@app.route('/api/comparison/confirm-match', methods=['POST'])
+def api_comparison_confirm_match():
+    """Persist a confirmed product match into product_mappings.
+
+    Accepts JSON body::
+
+        {
+          "reference_product_id": int,   # required
+          "target_product_id":    int,   # required
+          "match_status":         str,   # optional, e.g. "confirmed"
+          "confidence":           float, # optional, 0.0–1.0
+          "comment":              str    # optional
+        }
+
+    Returns the created / updated ProductMapping record.
+    """
+    if not request.is_json:
+        return jsonify({'error': 'Request must be JSON'}), 400
+    data = request.get_json() or {}
+    ref_id = data.get('reference_product_id')
+    tgt_id = data.get('target_product_id')
+    if not ref_id or not tgt_id:
+        return jsonify({'error': 'reference_product_id and target_product_id are required'}), 400
+    session = db_session()
+    try:
+        pm = create_product_mapping(
+            session,
+            reference_product_id=int(ref_id),
+            target_product_id=int(tgt_id),
+            match_status=data.get('match_status', 'confirmed'),
+            confidence=data.get('confidence'),
+            comment=data.get('comment'),
+        )
+        session.commit()
+    except Exception as exc:
+        session.rollback()
+        logger.exception("confirm-match failed: %s", exc)
+        return jsonify({'error': str(exc)}), 400
+    return jsonify({'product_mapping': _serialize_product_mapping(pm)})
+
+
 @app.route('/api/comparison', methods=['POST'])
 def api_comparison():
-    """Compare products from two DB-backed categories.
+    """Compare products from two DB-backed categories (DB-first).
 
-    Both reference and target products are read from the database (DB-first).
-    The matching step currently delegates to `product_exists_on_main` which is a
-    transitional normalisation utility.
+    Both reference and target products are read exclusively from the database.
+    Live scraping is never triggered from this endpoint.
 
-    TODO: replace `product_exists_on_main` with a dedicated ComparisonService that
-    operates directly on DB rows and optionally applies category_mappings weights.
-    Response contract is stable and must not change without updating API docs.
+    Request body (JSON)::
+
+        {
+          "reference_category_id": int,  # required — must belong to a reference store
+          "target_category_id":    int   # required — must belong to a non-reference store
+        }
+
+    Response shape::
+
+        {
+          "reference_category": {...},
+          "target_category":    {...},
+          "summary": {
+            "reference_total":  int,
+            "target_total":     int,
+            "matched":          int,
+            "only_in_reference": int,
+            "only_in_target":   int,
+            "ambiguous":        int
+          },
+          "matches":          [...],
+          "ambiguous":        [...],
+          "only_in_reference":[...],
+          "only_in_target":   [...]
+        }
     """
     if not request.is_json:
         return jsonify({'error': 'Request must be JSON'}), 400
     payload = request.get_json() or {}
-    ref_store_id = payload.get('reference_store_id')
-    target_store_id = payload.get('target_store_id')
     ref_category_id = payload.get('reference_category_id')
     target_category_id = payload.get('target_category_id')
-    if not (ref_category_id and target_category_id):
+    if not ref_category_id or not target_category_id:
         return jsonify({'error': 'reference_category_id and target_category_id are required'}), 400
     session = db_session()
-    ref_products = list_products_by_category(session, ref_category_id)
-    tgt_products = list_products_by_category(session, target_category_id)
-    def _to_item(prod):
-        price_str = f"{prod.price or ''} {prod.currency or ''}".strip()
-        return {
-            'name': prod.name,
-            'price_raw': price_str,
-            'url': prod.product_url,
-            'source_site': prod.store.name if prod.store else '',
-        }
-    main_products = [_to_item(p) for p in ref_products]
-    other_products = [_to_item(p) for p in tgt_products]
-    MAIN_NORMALIZED.clear()
-    for r in main_products:
-        MAIN_NORMALIZED.append(normalize_title(r['name']))
-    missing = product_exists_on_main(main_products, other_products)
-    return jsonify({
-        'missing': missing,
-        'total': len(missing),
-        'total_urls': len(other_products),
-        'scanned': len(other_products),
-    })
+    try:
+        result = ComparisonService(session).compare(
+            reference_category_id=int(ref_category_id),
+            target_category_id=int(target_category_id),
+        )
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except Exception as exc:
+        logger.exception("api_comparison failed: %s", exc)
+        return jsonify({'error': 'Internal server error'}), 500
+    return jsonify(result)
 
 
 @app.route('/api/scrape-status', methods=['GET'])

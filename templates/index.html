@@ -118,6 +118,42 @@
             font-weight: 600;
         }
         .link-btn:hover { text-decoration: underline; }
+        .btn {
+            display: inline-block;
+            padding: 10px 22px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .btn:hover { background: var(--accent-dark); }
+        .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+        .btn-sm {
+            padding: 4px 12px;
+            font-size: 0.82rem;
+            border-radius: 7px;
+        }
+        .comparison-sections { display: flex; flex-direction: column; gap: 20px; }
+        .comp-section h3 { margin: 0 0 10px; font-size: 1rem; }
+        .badge {
+            display: inline-block;
+            padding: 2px 9px;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            margin-left: 6px;
+            vertical-align: middle;
+        }
+        .badge-matched  { background: #d4f5e1; color: #1a6e38; }
+        .badge-ref      { background: #dde8ff; color: #1a3a8f; }
+        .badge-tgt      { background: #fff0cc; color: #7a4f00; }
+        .badge-ambig    { background: #fce4d4; color: #7a2800; }
+        .color-green td { background: #f0fff6; }
+        .color-yellow td { background: #fffde7; }
         @media (max-width: 640px) {
             main { padding: 24px 16px; }
             header { padding: 28px 18px; }
@@ -158,6 +194,14 @@
                     <div id="targetCategories" class="categories"></div>
                 </div>
             </div>
+        </section>
+
+        <section class="panel">
+            <h2>Порівняння</h2>
+            <p class="muted" style="margin:0 0 14px;">Оберіть категорії референсного та цільового магазину, потім натисніть кнопку.</p>
+            <button id="compareBtn" class="btn" disabled onclick="runComparison()">Порівняти категорії</button>
+            <div id="comparisonStatus" class="status" style="margin-top:14px;display:none;"></div>
+            <div id="comparisonResults" class="comparison-sections" style="margin-top:20px;"></div>
         </section>
 
         <section class="panel">
@@ -276,6 +320,7 @@
                     }
                     renderCategories(container, categories, type);
                     loadProducts(cat.id, type);
+                    updateCompareBtn();
                 };
                 container.appendChild(div);
             });
@@ -283,6 +328,11 @@
 
         function isCategoryActive(type, categoryId) {
             return (type === 'reference' ? state.referenceCategoryId : state.targetCategoryId) === categoryId;
+        }
+
+        function updateCompareBtn() {
+            const btn = document.getElementById('compareBtn');
+            if (btn) btn.disabled = !(state.referenceCategoryId && state.targetCategoryId);
         }
 
         async function loadProducts(categoryId, type) {
@@ -324,6 +374,172 @@
                 </div>
             `;
         }
+
+        async function runComparison() {
+            const statusEl = document.getElementById('comparisonStatus');
+            const resultsEl = document.getElementById('comparisonResults');
+            statusEl.style.display = 'block';
+            statusEl.textContent = 'Виконується порівняння…';
+            statusEl.style.background = '#eef1ff';
+            statusEl.style.color = 'var(--muted)';
+            resultsEl.innerHTML = '';
+            try {
+                const res = await fetch('/api/comparison', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        reference_category_id: state.referenceCategoryId,
+                        target_category_id: state.targetCategoryId,
+                    }),
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    statusEl.textContent = 'Помилка: ' + (data.error || res.statusText);
+                    statusEl.style.background = '#ffe3e3';
+                    statusEl.style.color = '#b20000';
+                    return;
+                }
+                const s = data.summary || {};
+                statusEl.textContent =
+                    `Збігів: ${s.matched ?? 0}  •  Тільки в референсі: ${s.only_in_reference ?? 0}  •  ` +
+                    `Тільки в цільовому: ${s.only_in_target ?? 0}  •  Неоднозначних: ${s.ambiguous ?? 0}`;
+                renderComparisonResults(resultsEl, data);
+            } catch (err) {
+                statusEl.textContent = 'Помилка: ' + err.message;
+                statusEl.style.background = '#ffe3e3';
+                statusEl.style.color = '#b20000';
+            }
+        }
+
+        function renderComparisonResults(container, data) {
+            container.innerHTML = '';
+
+            // --- Matches ---
+            if ((data.matches || []).length) {
+                const sec = document.createElement('div');
+                sec.className = 'comp-section';
+                sec.innerHTML = `<h3>Збіги <span class="badge badge-matched">${data.matches.length}</span></h3>`;
+                const rows = data.matches.map(m => {
+                    const ref = m.reference_product || {};
+                    const tgt = m.target_product || {};
+                    const score = m.score != null ? m.score.toFixed(1) : '—';
+                    const src = m.match_source === 'stored' ? '💾' : '🔍';
+                    const colorClass = m.color === 'green' ? 'color-green' : m.color === 'yellow' ? 'color-yellow' : '';
+                    const confirmBtn = m.match_source !== 'stored'
+                        ? `<button class="btn btn-sm" onclick="confirmMatch(${ref.id},${tgt.id},this)">✔ Підтвердити</button>`
+                        : '<span class="muted">збережено</span>';
+                    return `<tr class="${colorClass}">
+                        <td>${src} <a class="link-btn" href="${ref.product_url||'#'}" target="_blank">${ref.name||'—'}</a></td>
+                        <td>${ref.price != null ? ref.price : '—'} ${ref.currency||''}</td>
+                        <td><a class="link-btn" href="${tgt.product_url||'#'}" target="_blank">${tgt.name||'—'}</a></td>
+                        <td>${tgt.price != null ? tgt.price : '—'} ${tgt.currency||''}</td>
+                        <td class="muted">${score}</td>
+                        <td>${confirmBtn}</td>
+                    </tr>`;
+                }).join('');
+                sec.innerHTML += `<div class="table-wrapper"><table>
+                    <thead><tr><th>Референс</th><th>Ціна</th><th>Цільовий</th><th>Ціна</th><th>Score</th><th></th></tr></thead>
+                    <tbody>${rows}</tbody></table></div>`;
+                container.appendChild(sec);
+            }
+
+            // --- Ambiguous ---
+            if ((data.ambiguous || []).length) {
+                const sec = document.createElement('div');
+                sec.className = 'comp-section';
+                sec.innerHTML = `<h3>Неоднозначні <span class="badge badge-ambig">${data.ambiguous.length}</span></h3>`;
+                const rows = data.ambiguous.map(m => {
+                    const ref = m.reference_product || {};
+                    const tgt = m.target_product || {};
+                    const refPart = ref.id
+                        ? `<a class="link-btn" href="${ref.product_url||'#'}" target="_blank">${ref.name||'—'}</a>`
+                        : '—';
+                    const tgtPart = tgt.id
+                        ? `<a class="link-btn" href="${tgt.product_url||'#'}" target="_blank">${tgt.name||'—'}</a>`
+                        : '—';
+                    const confirmBtn = (ref.id && tgt.id)
+                        ? `<button class="btn btn-sm" onclick="confirmMatch(${ref.id},${tgt.id},this)">✔ Підтвердити</button>`
+                        : '';
+                    return `<tr>
+                        <td>${refPart}</td>
+                        <td>${ref.price != null ? ref.price : '—'} ${ref.currency||''}</td>
+                        <td>${tgtPart}</td>
+                        <td>${tgt.price != null ? tgt.price : '—'} ${tgt.currency||''}</td>
+                        <td>${confirmBtn}</td>
+                    </tr>`;
+                }).join('');
+                sec.innerHTML += `<div class="table-wrapper"><table>
+                    <thead><tr><th>Референс</th><th>Ціна</th><th>Цільовий</th><th>Ціна</th><th></th></tr></thead>
+                    <tbody>${rows}</tbody></table></div>`;
+                container.appendChild(sec);
+            }
+
+            // --- Only in reference ---
+            if ((data.only_in_reference || []).length) {
+                const sec = document.createElement('div');
+                sec.className = 'comp-section';
+                sec.innerHTML = `<h3>Тільки в референсі <span class="badge badge-ref">${data.only_in_reference.length}</span></h3>`;
+                const rows = data.only_in_reference.map(item => {
+                    const p = item.reference_product || {};
+                    return `<tr><td><a class="link-btn" href="${p.product_url||'#'}" target="_blank">${p.name||'—'}</a></td>
+                        <td>${p.price != null ? p.price : '—'} ${p.currency||''}</td></tr>`;
+                }).join('');
+                sec.innerHTML += `<div class="table-wrapper"><table>
+                    <thead><tr><th>Назва</th><th>Ціна</th></tr></thead>
+                    <tbody>${rows}</tbody></table></div>`;
+                container.appendChild(sec);
+            }
+
+            // --- Only in target ---
+            if ((data.only_in_target || []).length) {
+                const sec = document.createElement('div');
+                sec.className = 'comp-section';
+                sec.innerHTML = `<h3>Тільки в цільовому <span class="badge badge-tgt">${data.only_in_target.length}</span></h3>`;
+                const rows = data.only_in_target.map(item => {
+                    const p = item.target_product || {};
+                    return `<tr><td><a class="link-btn" href="${p.product_url||'#'}" target="_blank">${p.name||'—'}</a></td>
+                        <td>${p.price != null ? p.price : '—'} ${p.currency||''}</td></tr>`;
+                }).join('');
+                sec.innerHTML += `<div class="table-wrapper"><table>
+                    <thead><tr><th>Назва</th><th>Ціна</th></tr></thead>
+                    <tbody>${rows}</tbody></table></div>`;
+                container.appendChild(sec);
+            }
+
+            if (!container.children.length) {
+                container.innerHTML = '<p class="muted">Немає результатів порівняння.</p>';
+            }
+        }
+
+        async function confirmMatch(refId, tgtId, btnEl) {
+            btnEl.disabled = true;
+            btnEl.textContent = '…';
+            try {
+                const res = await fetch('/api/comparison/confirm-match', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        reference_product_id: refId,
+                        target_product_id: tgtId,
+                        match_status: 'confirmed',
+                    }),
+                });
+                if (res.ok) {
+                    btnEl.textContent = '✓ збережено';
+                    btnEl.style.background = '#3a9e5f';
+                } else {
+                    const d = await res.json();
+                    btnEl.textContent = 'Помилка';
+                    btnEl.disabled = false;
+                    alert('Помилка: ' + (d.error || res.statusText));
+                }
+            } catch (err) {
+                btnEl.textContent = 'Помилка';
+                btnEl.disabled = false;
+                alert('Помилка: ' + err.message);
+            }
+        }
+
 
         document.addEventListener('DOMContentLoaded', loadStores);
     </script>

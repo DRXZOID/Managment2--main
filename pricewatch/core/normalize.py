@@ -155,6 +155,105 @@ def _color_for_matched(main_price: Optional[int], other_price: Optional[int]) ->
 # Public API
 # ----------------------------
 
+def heuristic_match(
+    reference_items: List[Dict[str, Any]],
+    target_items: List[Dict[str, Any]],
+    *,
+    top_k: int = 25,
+    min_score: float = 78.0,
+    min_gap: float = 6.0,
+) -> List[Dict[str, Any]]:
+    """Match two lists of product dicts using brand/token/fuzzy heuristics.
+
+    Each item dict must have a ``name`` (or ``title``) key.  Optional keys
+    ``price_raw`` and ``url`` are used for price comparison and URL storage.
+
+    Returns a flat list of result dicts, each with:
+      - ``status``:     ``"matched"`` | ``"ambiguous"`` | ``"no_match"``
+      - ``color``:      ``"green"`` | ``"yellow"`` | ``"none"`` | ``"blue"`` | ``"red"``
+      - ``main``:       original reference item dict (or ``None``)
+      - ``other``:      original target item dict (or ``None``)
+      - ``score``:      best fuzzy score (float, when computed)
+      - ``gap``:        score gap to second-best candidate (float, when computed)
+      - ``candidates``: top-3 ambiguous candidates (only when ``status=="ambiguous"``)
+
+    ``min_score`` and ``min_gap`` use the canonical defaults (78.0 / 6.0) and
+    should not be changed without re-testing matching quality.
+    """
+    main = _prep(reference_items, "main")
+    other = _prep(target_items, "other")
+
+    other_by_brand: Dict[Optional[str], List[Dict[str, Any]]] = {}
+    for b in other:
+        other_by_brand.setdefault(b["_brand"], []).append(b)
+        other_by_brand.setdefault(None, []).append(b)
+
+    other_index_map = {id(obj): idx for idx, obj in enumerate(other)}
+    used_other_idx: set = set()
+    results: List[Dict[str, Any]] = []
+
+    for a in main:
+        pool = other_by_brand.get(a["_brand"], other_by_brand.get(None, []))
+        if not pool:
+            results.append({"status": "no_match", "color": "blue", "main": a["_raw"], "other": None})
+            continue
+
+        norms = [b["_norm"] for b in pool]
+        cands = process.extract(a["_norm"], norms, scorer=fuzz.token_set_ratio, limit=top_k)
+
+        scored: List[Tuple[float, Dict[str, Any]]] = []
+        for _, _, idx in cands:
+            b = pool[idx]
+            scored.append((_pair_score(a, b), b))
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        if not scored:
+            results.append({"status": "no_match", "color": "blue", "main": a["_raw"], "other": None})
+            continue
+
+        best_score, best = scored[0]
+        second_score = scored[1][0] if len(scored) > 1 else -1e9
+        gap = best_score - second_score
+
+        if best_score < min_score:
+            results.append({
+                "status": "no_match", "color": "blue",
+                "main": a["_raw"], "other": None,
+                "score": float(best_score), "gap": float(gap),
+            })
+            continue
+
+        if gap < min_gap:
+            results.append({
+                "status": "ambiguous", "color": "blue",
+                "main": a["_raw"], "other": None,
+                "score": float(best_score), "gap": float(gap),
+                "candidates": [{"score": float(s), "item": b["_raw"]} for s, b in scored[:3]],
+            })
+            results.append({
+                "status": "ambiguous", "color": "red",
+                "main": None, "other": best["_raw"],
+                "score": float(best_score), "gap": float(gap),
+            })
+            continue
+
+        b_idx = other_index_map.get(id(best))
+        if b_idx is not None:
+            used_other_idx.add(b_idx)
+        results.append({
+            "status": "matched",
+            "color": _color_for_matched(a["_price_uah"], best["_price_uah"]),
+            "main": a["_raw"], "other": best["_raw"],
+            "score": float(best_score), "gap": float(gap),
+        })
+
+    for idx, b in enumerate(other):
+        if idx not in used_other_idx:
+            results.append({"status": "no_match", "color": "red", "main": None, "other": b["_raw"]})
+
+    return results
+
+
 def product_exists_on_main(
     main_list_or_title,
     other_list: List[Dict[str, Any]] | None = None,
@@ -184,125 +283,14 @@ def product_exists_on_main(
                 return True
         return False
 
-    # Backward-compatible full matcher: product_exists_on_main(main_list, other_list)
-    main_list = main_list_or_title
-    main = _prep(main_list, "main")
-    other = _prep(other_list or [], "other")
-
-    # Index other by brand for better precision & performance (with fallback None)
-    other_by_brand: Dict[Optional[str], List[Dict[str, Any]]] = {}
-    for b in other:
-        other_by_brand.setdefault(b["_brand"], []).append(b)
-        other_by_brand.setdefault(None, []).append(b)
-
-    used_other_idx = set()  # indexes in 'other' list that got matched
-    results: List[Dict[str, Any]] = []
-
-    # We need stable mapping from item to its index inside original 'other' list
-    # We'll store it in prepared items.
-    other_index_map = {id(obj): idx for idx, obj in enumerate(other)}
-
-    for a in main:
-        pool = other_by_brand.get(a["_brand"], other_by_brand[None])
-        if not pool:
-            # main item has no candidates at all => only-in-main
-            results.append({
-                "status": "no_match",
-                "color": "blue",
-                "main": a["_raw"],
-                "other": None,
-            })
-            continue
-
-        norms = [b["_norm"] for b in pool]
-        cands = process.extract(a["_norm"], norms, scorer=fuzz.token_set_ratio, limit=top_k)
-
-        scored: List[Tuple[float, Dict[str, Any]]] = []
-        for _, _, idx in cands:
-            b = pool[idx]
-            scored.append((_pair_score(a, b), b))
-        scored.sort(key=lambda x: x[0], reverse=True)
-
-        if not scored:
-            results.append({
-                "status": "no_match",
-                "color": "blue",
-                "main": a["_raw"],
-                "other": None,
-            })
-            continue
-
-        best_score, best = scored[0]
-        second_score = scored[1][0] if len(scored) > 1 else -1e9
-        gap = best_score - second_score
-
-        # Decide status for the main item
-        if best_score < min_score:
-            # no_match (keep main)
-            results.append({
-                "status": "no_match",
-                "color": "blue",
-                "main": a["_raw"],
-                "other": None,
-                "score": float(best_score),
-                "gap": float(gap),
-            })
-            continue
-
-        if gap < min_gap:
-            # ambiguous => add BOTH elements, do not consume 'other' as matched
-            # main side element
-            results.append({
-                "status": "ambiguous",
-                "color": "blue",  # from your rule: exists in main; not confirmed in other
-                "main": a["_raw"],
-                "other": None,
-                "score": float(best_score),
-                "gap": float(gap),
-                "candidates": [
-                    {"score": float(s), "item": b["_raw"]}
-                    for s, b in scored[:3]
-                ],
-            })
-            # best other element separately
-            results.append({
-                "status": "ambiguous",
-                "color": "red",   # from your rule: exists in other; not confirmed in main
-                "main": None,
-                "other": best["_raw"],
-                "score": float(best_score),
-                "gap": float(gap),
-            })
-            continue
-
-        # matched => consume best other
-        b_idx = other_index_map.get(id(best))
-        if b_idx is not None:
-            used_other_idx.add(b_idx)
-
-        results.append({
-            "status": "matched",
-            "color": _color_for_matched(a["_price_uah"], best["_price_uah"]),
-            "main": a["_raw"],
-            "other": best["_raw"],
-            "score": float(best_score),
-            "gap": float(gap),
-        })
-
-    # Add remaining "only-in-other" items (not matched)
-    for idx, b in enumerate(other):
-        if idx in used_other_idx:
-            continue
-        # If it already appeared as ambiguous-other entry, we still keep it;
-        # your rule says ambiguous should include both elements.
-        results.append({
-            "status": "no_match",
-            "color": "red",
-            "main": None,
-            "other": b["_raw"],
-        })
-
-    return results
+    # Backward-compatible full matcher: delegates to heuristic_match
+    return heuristic_match(
+        main_list_or_title,
+        other_list or [],
+        top_k=top_k,
+        min_score=min_score,
+        min_gap=min_gap,
+    )
 
 def parse_price(price_str):
     if not price_str:
