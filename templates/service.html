@@ -201,6 +201,9 @@
             <div style="align-self:flex-end;">
                 <button class="primary" id="createMappingBtn">Створити мапінг</button>
             </div>
+            <div style="align-self:flex-end;">
+                <button class="ghost" id="autoLinkBtn" title="Авто-маппінг за нормалізованою назвою категорії">⚡ Авто-маппінг за назвою</button>
+            </div>
         </div>
         <div id="mappingStatus" class="status-pill status-info" style="margin-top:16px;">Виберіть магазини</div>
         <div class="table-wrapper" style="margin-top:12px;" id="mappingTable"></div>
@@ -603,6 +606,36 @@
         dialog.dataset.mode = 'create';
         delete dialog.dataset.mappingId;
         dialog.showModal();
+    });
+
+    // Auto-link button — create exact-name mappings automatically
+    document.getElementById('autoLinkBtn').addEventListener('click', async () => {
+        const refStoreId = serviceState.mappingRefStoreId;
+        const targetStoreId = serviceState.mappingTargetStoreId;
+        if (!refStoreId || !targetStoreId) {
+            setStatus('mappingStatus', 'Спочатку оберіть обидва магазини', 'warning'); return;
+        }
+        const btn = document.getElementById('autoLinkBtn');
+        btn.disabled = true;
+        setStatus('mappingStatus', 'Авто-маппінг…', 'warning');
+        try {
+            const data = await fetchJson('/api/category-mappings/auto-link', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    reference_store_id: refStoreId,
+                    target_store_id: targetStoreId,
+                }),
+            });
+            setStatus('mappingStatus',
+                `Авто-маппінг завершено: створено ${data.created}, пропущено ${data.skipped}`,
+                data.created > 0 ? 'success' : 'info');
+            loadMappings();
+        } catch (err) {
+            setStatus('mappingStatus', 'Помилка авто-маппінгу: ' + err.message, 'error');
+        } finally {
+            btn.disabled = false;
+        }
     });
 
     document.getElementById('mappingForm').addEventListener('submit', e => {

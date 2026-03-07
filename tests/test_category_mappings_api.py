@@ -176,3 +176,129 @@ def test_update_mapping_ignores_category_ids(monkeypatch):
     assert 'reference_category_id' not in received
     assert 'target_category_id' not in received
 
+
+# ---------------------------------------------------------------------------
+# GET /api/categories/<id>/mapped-target-categories
+# ---------------------------------------------------------------------------
+
+def test_mapped_target_categories_returns_list(monkeypatch):
+    """GET /api/categories/<id>/mapped-target-categories returns mapped targets."""
+    from types import SimpleNamespace
+    from app import app as flask_app
+    import app as app_module
+
+    ref_store = SimpleNamespace(id=1, name="Ref Store", is_reference=True)
+    tgt_store = SimpleNamespace(id=2, name="Target Store", is_reference=False)
+    tgt_cat = SimpleNamespace(
+        id=20,
+        name="Skates",
+        normalized_name="skates",
+        url="https://tgt.example.com/skates",
+        store_id=tgt_store.id,
+        store=tgt_store,
+    )
+    mapping = SimpleNamespace(
+        id=1,
+        reference_category_id=10,
+        target_category_id=tgt_cat.id,
+        target_category=tgt_cat,
+        match_type="exact",
+        confidence=1.0,
+    )
+
+    monkeypatch.setattr(app_module, "list_mapped_target_categories", lambda session, ref_id: [mapping])
+
+    resp = flask_app.test_client().get("/api/categories/10/mapped-target-categories")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["reference_category_id"] == 10
+    assert len(data["mapped_target_categories"]) == 1
+    entry = data["mapped_target_categories"][0]
+    assert entry["target_category_id"] == 20
+    assert entry["name"] == "Skates"
+    assert entry["match_type"] == "exact"
+    assert entry["confidence"] == 1.0
+    assert entry["store_name"] == "Target Store"
+
+
+def test_mapped_target_categories_empty(monkeypatch):
+    """GET /api/categories/<id>/mapped-target-categories returns empty list when no mappings."""
+    from app import app as flask_app
+    import app as app_module
+
+    monkeypatch.setattr(app_module, "list_mapped_target_categories", lambda session, ref_id: [])
+
+    resp = flask_app.test_client().get("/api/categories/99/mapped-target-categories")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["mapped_target_categories"] == []
+
+
+# ---------------------------------------------------------------------------
+# POST /api/category-mappings/auto-link
+# ---------------------------------------------------------------------------
+
+def test_auto_link_returns_created_and_skipped(monkeypatch):
+    """POST /api/category-mappings/auto-link returns {created, skipped}."""
+    from app import app as flask_app
+    from pricewatch.services.category_matching_service import CategoryMatchingService
+
+    monkeypatch.setattr(
+        CategoryMatchingService,
+        "auto_link",
+        staticmethod(lambda session, *, reference_store_id, target_store_id: {"created": 3, "skipped": 1}),
+    )
+
+    resp = flask_app.test_client().post(
+        "/api/category-mappings/auto-link",
+        json={"reference_store_id": 1, "target_store_id": 2},
+    )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["created"] == 3
+    assert data["skipped"] == 1
+
+
+def test_auto_link_returns_400_when_ids_missing():
+    """POST /api/category-mappings/auto-link returns 400 if store ids are missing."""
+    from app import app as flask_app
+
+    resp = flask_app.test_client().post(
+        "/api/category-mappings/auto-link",
+        json={},
+    )
+    assert resp.status_code == 400
+    assert "error" in resp.get_json()
+
+
+def test_auto_link_returns_400_on_value_error(monkeypatch):
+    """POST /api/category-mappings/auto-link returns 400 on ValueError from service."""
+    from app import app as flask_app
+    from pricewatch.services.category_matching_service import CategoryMatchingService
+
+    def raise_error(session, *, reference_store_id, target_store_id):
+        raise ValueError("Store 999 not found")
+
+    monkeypatch.setattr(CategoryMatchingService, "auto_link", staticmethod(raise_error))
+
+    resp = flask_app.test_client().post(
+        "/api/category-mappings/auto-link",
+        json={"reference_store_id": 999, "target_store_id": 2},
+    )
+    assert resp.status_code == 400
+    assert "error" in resp.get_json()
+
+
+def test_auto_link_requires_json():
+    """POST /api/category-mappings/auto-link returns 400 for non-JSON requests."""
+    from app import app as flask_app
+
+    resp = flask_app.test_client().post(
+        "/api/category-mappings/auto-link",
+        data="not-json",
+        content_type="text/plain",
+    )
+    assert resp.status_code == 400
+
+
+

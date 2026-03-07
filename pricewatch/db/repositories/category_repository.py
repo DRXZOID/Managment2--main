@@ -150,6 +150,18 @@ def delete_category_mapping(session: Session, mapping_id: int) -> None:
         session.flush()
 
 
+def list_mapped_target_categories(session: Session, reference_category_id: int) -> list[CategoryMapping]:
+    """Return all CategoryMapping rows for the given reference category (eager-loaded)."""
+    return cast(list[CategoryMapping], cast(object, (
+        session.query(CategoryMapping)
+        .options(
+            joinedload(CategoryMapping.target_category).joinedload(Category.store),
+        )
+        .filter(CategoryMapping.reference_category_id == reference_category_id)
+        .all()
+    )))
+
+
 def list_category_mappings(session: Session, *, reference_store_id: int | None = None, target_store_id: int | None = None) -> list[CategoryMapping]:
     q = session.query(CategoryMapping).options(
         joinedload(CategoryMapping.reference_category).joinedload(Category.store),
@@ -179,6 +191,7 @@ __all__ = [
     "get_category_by_name",
     "list_categories_by_store",
     "list_unmapped_categories",
+    "list_mapped_target_categories",
     "get_category",
     "upsert_category",
     "create_category_mapping",

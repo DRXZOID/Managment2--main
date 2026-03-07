@@ -27,6 +27,8 @@ from pricewatch.services.mapping_service import MappingService
 from pricewatch.services.scrape_history_service import ScrapeHistoryService
 from pricewatch.services.store_service import StoreService
 from pricewatch.services.comparison_service import ComparisonService
+from pricewatch.services.category_matching_service import CategoryMatchingService
+from pricewatch.db.repositories.category_repository import list_mapped_target_categories
 from pricewatch.db.models import Store, ProductMapping
 
 app = Flask(__name__)
@@ -487,6 +489,55 @@ def api_list_category_products(category_id: int):
     return jsonify({'products': [_serialize_product(p) for p in products]})
 
 
+@app.route('/api/categories/<int:reference_category_id>/mapped-target-categories', methods=['GET'])
+def api_mapped_target_categories(reference_category_id: int):
+    """Return all target categories mapped to the given reference category.
+
+    Response::
+
+        {
+          "reference_category_id": int,
+          "mapped_target_categories": [
+            {
+              "target_category_id": int,
+              "name": str,
+              "normalized_name": str | null,
+              "url": str | null,
+              "store_id": int,
+              "store_name": str | null,
+              "match_type": str | null,
+              "confidence": float | null,
+              "mapping_id": int,
+            },
+            ...
+          ]
+        }
+    """
+    session = db_session()
+    mappings = list_mapped_target_categories(session, reference_category_id)
+    result = []
+    for m in mappings:
+        tgt = getattr(m, "target_category", None)
+        if tgt is None:
+            continue
+        tgt_store = getattr(tgt, "store", None)
+        result.append({
+            "target_category_id": tgt.id,
+            "name": tgt.name,
+            "normalized_name": tgt.normalized_name,
+            "url": tgt.url,
+            "store_id": tgt.store_id,
+            "store_name": getattr(tgt_store, "name", None),
+            "match_type": m.match_type,
+            "confidence": m.confidence,
+            "mapping_id": m.id,
+        })
+    return jsonify({
+        "reference_category_id": reference_category_id,
+        "mapped_target_categories": result,
+    })
+
+
 @app.route('/api/stores/<int:store_id>/categories/sync', methods=['POST'])
 def api_sync_categories(store_id: int):
     session = db_session()
@@ -523,6 +574,46 @@ def api_sync_category_products(category_id: int):
         'summary': result['summary'],
         'products': [_serialize_product(p) for p in result['products']],
     })
+
+
+@app.route('/api/category-mappings/auto-link', methods=['POST'])
+def api_auto_link_category_mappings():
+    """Auto-create category mappings by exact normalized_name match.
+
+    Request body (JSON)::
+
+        {
+          "reference_store_id": int,   # required
+          "target_store_id":    int    # required
+        }
+
+    Response::
+
+        {"created": int, "skipped": int}
+    """
+    if not request.is_json:
+        return jsonify({'error': 'Request must be JSON'}), 400
+    data = request.get_json() or {}
+    reference_store_id = data.get('reference_store_id')
+    target_store_id = data.get('target_store_id')
+    if not reference_store_id or not target_store_id:
+        return jsonify({'error': 'reference_store_id and target_store_id are required'}), 400
+    session = db_session()
+    try:
+        result = CategoryMatchingService.auto_link(
+            session,
+            reference_store_id=int(reference_store_id),
+            target_store_id=int(target_store_id),
+        )
+        session.commit()
+    except ValueError as exc:
+        session.rollback()
+        return jsonify({'error': str(exc)}), 400
+    except Exception as exc:
+        session.rollback()
+        logger.exception("auto_link_category_mappings failed: %s", exc)
+        return jsonify({'error': 'Internal server error'}), 500
+    return jsonify(result)
 
 
 @app.route('/api/category-mappings', methods=['GET'])
@@ -678,49 +769,56 @@ def api_comparison_confirm_match():
 
 @app.route('/api/comparison', methods=['POST'])
 def api_comparison():
-    """Compare products from two DB-backed categories (DB-first).
+    """Compare products from a reference category against mapped target categories.
 
     Both reference and target products are read exclusively from the database.
     Live scraping is never triggered from this endpoint.
 
+    The target category must be mapped to the reference category via
+    ``category_mappings``.  Use ``POST /api/category-mappings`` or
+    ``POST /api/category-mappings/auto-link`` to create mappings first.
+
     Request body (JSON)::
 
         {
-          "reference_category_id": int,  # required — must belong to a reference store
-          "target_category_id":    int   # required — must belong to a non-reference store
+          "reference_category_id": int,  # required
+          "target_category_id":    int   # optional – if omitted, all mapped targets are compared
         }
 
-    Response shape::
+    Response::
 
         {
           "reference_category": {...},
-          "target_category":    {...},
-          "summary": {
-            "reference_total":  int,
-            "target_total":     int,
-            "matched":          int,
-            "only_in_reference": int,
-            "only_in_target":   int,
-            "ambiguous":        int
-          },
-          "matches":          [...],
-          "ambiguous":        [...],
-          "only_in_reference":[...],
-          "only_in_target":   [...]
+          "mapped_target_categories": [...],
+          "comparisons": [
+            {
+              "target_category": {...},
+              "summary": {...},
+              "matches": [...],
+              "ambiguous": [...],
+              "only_in_reference": [...],
+              "only_in_target": [...]
+            }
+          ]
         }
+
+    Errors:
+      400 – reference category not found / not a reference store
+      400 – target_category_id provided but not mapped to reference category
+      400 – no mappings exist for the reference category (when target omitted)
     """
     if not request.is_json:
         return jsonify({'error': 'Request must be JSON'}), 400
     payload = request.get_json() or {}
     ref_category_id = payload.get('reference_category_id')
+    if not ref_category_id:
+        return jsonify({'error': 'reference_category_id is required'}), 400
     target_category_id = payload.get('target_category_id')
-    if not ref_category_id or not target_category_id:
-        return jsonify({'error': 'reference_category_id and target_category_id are required'}), 400
     session = db_session()
     try:
         result = ComparisonService(session).compare(
             reference_category_id=int(ref_category_id),
-            target_category_id=int(target_category_id),
+            target_category_id=int(target_category_id) if target_category_id is not None else None,
         )
     except ValueError as exc:
         return jsonify({'error': str(exc)}), 400
