@@ -81,6 +81,137 @@ python app.py
 
 - `/` — користувацька сторінка. Всі дані зчитуються з `stores/categories/products` таблиць. Якщо записи застарілі, користувач бачить підказку перейти на сервісну панель.
 - `/service` — операційна панель з трьома вкладками: Категорії (синхронізація та запуск скрапу), Мапінги (CRUD для category_mappings) та Історія (таблиця scrape_runs з пагінацією та REST-полінгом `/api/scrape-status`).
+- `/gap` — сторінка перегляду **асортиментного розриву** для контент-менеджерів. Показує товари цільового магазину, яких немає у reference-асортименті. Детальніше — у розділі **«Сторінка розриву асортименту (`/gap`)»** нижче.
+
+---
+
+## Сторінка розриву асортименту (`/gap`)
+
+Сторінка `/gap` призначена для контент-менеджерів і дозволяє переглядати та опрацьовувати **gap-товари** — товари цільового магазину, які:
+- не входять у підтверджені мепінги (`ProductMapping`)
+- не з'являються у жодному списку кандидатів
+
+### Сценарій використання
+
+1. Оберіть **цільовий магазин** (не reference).
+2. Оберіть **reference-категорію**.
+3. Завантажуються замаплені цільові категорії — всі відмічені за замовчуванням.
+4. Якщо маппінгів немає — завантаження заблоковане з підказкою перейти на `/service`.
+5. Встановіть фільтри (пошук, «лише в наявності», статуси) та натисніть **«Показати розрив»**.
+6. Результати згруповані за цільовою категорією із summary-картками.
+
+### Статуси gap-товарів
+
+| Статус | Зберігається в БД | Значення |
+|---|---|---|
+| `new` | ❌ (неявний) | Не опрацьовано |
+| `in_progress` | ✅ | Контент-менеджер взяв у роботу |
+| `done` | ✅ | Опрацьовано |
+
+- **За замовчуванням** видимі: `new` + `in_progress`. Статус `done` прихований, але **завжди рахується у summary**.
+- Кнопки дій: **«Взяти в роботу»** (`new` → `in_progress`), **«Позначити опрацьованим»** (`in_progress` → `done`).
+
+### API для сторінки `/gap`
+
+#### `POST /api/gap`
+
+Повертає згруповані gap-товари для обраного контексту.
+
+**Запит:**
+```json
+{
+  "target_store_id": 2,
+  "reference_category_id": 10,
+  "target_category_ids": [21, 22],
+  "search": "bauer",
+  "only_available": true,
+  "statuses": ["new", "in_progress"]
+}
+```
+
+- `target_store_id` — **обов'язковий**.
+- `reference_category_id` — **обов'язковий**.
+- `target_category_ids` — **обов'язковий**, непорожній список. Кожен id мусить бути у маппінгах для `reference_category_id`, інакше `400`.
+- `search` — фільтрація за підрядком у назві (регістро-незалежна).
+- `only_available` — якщо `true`, показуються тільки товари з `is_available=true`.
+- `statuses` — список видимих статусів. За замовчуванням `["new", "in_progress"]`. Статус `done` завжди рахується у `summary.done` незалежно від цього фільтру.
+
+**Відповідь:**
+```json
+{
+  "reference_category": {"id": 10, "name": "Ключки"},
+  "target_store": {"id": 2, "name": "HockeyShop"},
+  "selected_target_categories": [
+    {"target_category_id": 21, "target_category_name": "Ключки Senior"}
+  ],
+  "summary": {"total": 37, "new": 21, "in_progress": 9, "done": 7},
+  "groups": [
+    {
+      "target_category": {"id": 21, "name": "Ключки Senior"},
+      "count": 12,
+      "items": [
+        {
+          "target_product": {
+            "id": 501, "name": "Bauer Vapor X5 Pro Grip Stick Senior",
+            "price": 8999, "currency": "UAH",
+            "product_url": "https://...", "is_available": true
+          },
+          "status": "new"
+        }
+      ]
+    }
+  ]
+}
+```
+
+**Помилки (400):**
+- `target_store_id` не вказано.
+- `reference_category_id` не вказано або не знайдено.
+- `target_category_ids` порожній або містить id, не замаплений до `reference_category_id`.
+
+#### `POST /api/gap/status`
+
+Зберігає статус опрацювання gap-товару.
+
+**Запит:**
+```json
+{
+  "reference_category_id": 10,
+  "target_product_id": 501,
+  "status": "in_progress"
+}
+```
+
+Допустимі значення `status`: `"in_progress"`, `"done"`. Статус `"new"` **не приймається** (він неявний — відсутність рядка в БД).
+
+**Відповідь:**
+```json
+{
+  "success": true,
+  "item": {
+    "reference_category_id": 10,
+    "target_product_id": 501,
+    "status": "in_progress",
+    "updated_at": "2026-03-08T10:00:00"
+  }
+}
+```
+
+### Таблиця БД: `gap_item_statuses`
+
+| Колонка | Тип | Опис |
+|---|---|---|
+| `id` | INTEGER PK | Авто-інкремент |
+| `reference_category_id` | INTEGER FK→categories | Reference-категорія |
+| `target_product_id` | INTEGER FK→products | Target-товар |
+| `status` | VARCHAR(50) | `in_progress` або `done` |
+| `created_at` | DATETIME | Час створення |
+| `updated_at` | DATETIME | Час останнього оновлення |
+
+Унікальний обмеження: `(reference_category_id, target_product_id)`.  
+Міграція: `migrations/versions/a1b2c3d4e5f6_add_gap_item_statuses.py`.
+
+
 
 ### Класифікація API-ендпоінтів
 
@@ -94,6 +225,8 @@ python app.py
 | `GET` | `/api/categories/<id>/mapped-target-categories` | Замаплені цільові категорії для обраної reference-категорії. Підтримує `?target_store_id=<id>` для фільтрації за магазином. |
 | `POST` | `/api/comparison` | Порівняння за маппінгами (дані з БД). Детальний формат нижче. |
 | `POST` | `/api/comparison/confirm-match` | Підтвердити мепінг товарів — зберегти `ProductMapping` у БД. |
+| `POST` | `/api/gap` | Отримати згруповані gap-товари (target-only) для review. |
+| `POST` | `/api/gap/status` | Зберегти статус опрацювання gap-товару (`in_progress` / `done`). |
 
 #### Service / admin
 
@@ -508,11 +641,28 @@ Managment2--main/
 ├── http_client.py                  # HTTP клієнт/обгортка
 ├── pricewatch/
 │   ├── core/                       # ядро парсингу/нормалізації
-│   ├── db/                         # SQLAlchemy моделі, конфіг, репозиторії, тести
+│   ├── db/
+│   │   ├── models.py               # SQLAlchemy моделі (+ GapItemStatus)
+│   │   └── repositories/
+│   │       ├── gap_repository.py   # get/upsert/bulk gap statuses
+│   │       └── ...
+│   ├── services/
+│   │   ├── comparison_service.py   # ComparisonService (target_only логіка)
+│   │   ├── gap_service.py          # GapService (build_gap_view, set_gap_item_status)
+│   │   └── ...
 │   └── shops/                      # адаптери магазинів
-├── migrations/                     # Alembic env + versions/
+├── migrations/
+│   └── versions/
+│       ├── 095e10abb6f9_initial_schema.py
+│       └── a1b2c3d4e5f6_add_gap_item_statuses.py
+├── templates/
+│   ├── index.html                  # / — порівняння
+│   ├── service.html                # /service — операційна панель
+│   └── gap.html                    # /gap — розрив асортименту
+├── tests/
+│   ├── test_gap.py                 # 12 тестів для /gap
+│   └── ...
 ├── examples/db_usage.py            # приклад роботи з БД
-├── templates/                      # фронтенд
 └── README.md
 ```
 

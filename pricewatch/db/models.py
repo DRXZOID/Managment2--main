@@ -165,6 +165,35 @@ class ProductMapping(Base):
     target_product: Mapped[Product] = relationship("Product", foreign_keys=[target_product_id], back_populates="target_mappings")
 
 
+class GapItemStatus(Base):
+    """Persisted review status for target-only products in an assortment gap review.
+
+    Only non-default states are stored:
+    - ``in_progress`` – content manager is working on this item
+    - ``done``        – content manager has finished reviewing this item
+
+    The implicit default state ``new`` is represented by the *absence* of a row.
+    """
+    __tablename__ = "gap_item_statuses"
+    __table_args__ = (
+        UniqueConstraint(
+            "reference_category_id",
+            "target_product_id",
+            name="uq_gap_item_statuses_pair",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    reference_category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"), nullable=False)
+    target_product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    reference_category: Mapped["Category"] = relationship("Category", foreign_keys=[reference_category_id])
+    target_product: Mapped["Product"] = relationship("Product", foreign_keys=[target_product_id])
+
+
 class ProductPriceHistory(Base):
     __tablename__ = "product_price_history"
     __table_args__ = (Index("ix_price_history_product_id", "product_id"),)

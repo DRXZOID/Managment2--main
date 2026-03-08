@@ -38,6 +38,11 @@ from .scrape_run_repository import (
     list_runs,
     get_run,
 )
+from .gap_repository import (
+    get_gap_status,
+    upsert_gap_status,
+    bulk_get_gap_statuses,
+)
 
 __all__ = [
     "get_or_create_store",
@@ -75,4 +80,7 @@ __all__ = [
     "update_counters",
     "list_runs",
     "get_run",
+    "get_gap_status",
+    "upsert_gap_status",
+    "bulk_get_gap_statuses",
 ]
