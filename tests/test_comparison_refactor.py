@@ -141,10 +141,11 @@ class TestMappedTargetCategoriesEndpoint:
         ids = [m["target_category_id"] for m in data["mapped_target_categories"]]
         assert 101 in ids
 
-    def test_flask_endpoint_returns_rich_response_shape(self):
-        from app import app as flask_app
-
-        with _session_scope() as session:
+    def test_flask_endpoint_returns_rich_response_shape(
+        self, flask_app, db_session_scope
+    ):
+        """Endpoint must see data committed through the shared test session."""
+        with db_session_scope() as session:
             rs = _ref_store(session, "MTC3")
             ts = _tgt_store(session, "MTC3_T")
             rc = _cat(session, rs, "Gloves-MTC3")
@@ -152,6 +153,7 @@ class TestMappedTargetCategoriesEndpoint:
             _map_cats(session, rc, tc, match_type="exact")
             session.flush()
             rc_id = rc.id
+        # session committed here — Flask client reads from the same engine
 
         resp = flask_app.test_client().get(
             f"/api/categories/{rc_id}/mapped-target-categories"
@@ -160,6 +162,9 @@ class TestMappedTargetCategoriesEndpoint:
         data = resp.get_json()
         assert "reference_category" in data
         assert "mapped_target_categories" in data
+        assert len(data["mapped_target_categories"]) >= 1, (
+            "Flask endpoint must see rows committed through the shared test session"
+        )
         entry = data["mapped_target_categories"][0]
         for field in (
             "target_category_id", "target_category_name",
