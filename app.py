@@ -30,6 +30,7 @@ from pricewatch.services.comparison_service import ComparisonService
 from pricewatch.services.category_matching_service import CategoryMatchingService
 from pricewatch.db.repositories.category_repository import list_mapped_target_categories
 from pricewatch.db.models import Store, ProductMapping
+from pricewatch.services.gap_service import GapService
 
 logger = logging.getLogger(__name__)
 
@@ -275,6 +276,10 @@ def _register_routes(flask_app):  # noqa: C901  (complexity OK for route hub)
     @flask_app.route('/service')
     def service_page():
         return render_template('service.html', enable_admin_sync=current_app.config.get('ENABLE_ADMIN_SYNC', True))
+
+    @flask_app.route('/gap')
+    def gap_page():
+        return render_template('gap.html')
 
     @flask_app.route('/api/adapters', methods=['GET'])
     def adapters_list():
@@ -731,6 +736,75 @@ def _register_routes(flask_app):  # noqa: C901  (complexity OK for route hub)
             logger.exception("api_comparison failed: %s", exc)
             return jsonify({'error': 'Internal server error'}), 500
         return jsonify(result)
+
+    @flask_app.route('/api/gap', methods=['POST'])
+    def api_gap():
+        """Return grouped target-only (gap) items for a reference category + target categories."""
+        if not request.is_json:
+            return jsonify({'error': 'Request must be JSON'}), 400
+        payload = request.get_json() or {}
+        target_store_id = payload.get('target_store_id')
+        reference_category_id = payload.get('reference_category_id')
+        target_category_ids = payload.get('target_category_ids')
+        if not target_store_id:
+            return jsonify({'error': 'target_store_id is required'}), 400
+        if not reference_category_id:
+            return jsonify({'error': 'reference_category_id is required'}), 400
+        if not isinstance(target_category_ids, list) or not target_category_ids:
+            return jsonify({'error': 'target_category_ids must be a non-empty list'}), 400
+        search = payload.get('search') or None
+        only_available = payload.get('only_available')
+        if only_available is not None:
+            only_available = bool(only_available)
+        statuses = payload.get('statuses') or None
+        session = _get_db_session()()
+        try:
+            result = GapService(session).build_gap_view(
+                target_store_id=int(target_store_id),
+                reference_category_id=int(reference_category_id),
+                target_category_ids=[int(i) for i in target_category_ids],
+                search=search,
+                only_available=only_available,
+                statuses=statuses,
+            )
+        except ValueError as exc:
+            return jsonify({'error': str(exc)}), 400
+        except Exception as exc:
+            logger.exception("api_gap failed: %s", exc)
+            return jsonify({'error': 'Internal server error'}), 500
+        return jsonify(result)
+
+    @flask_app.route('/api/gap/status', methods=['POST'])
+    def api_gap_status():
+        """Persist a gap item review status (in_progress or done)."""
+        if not request.is_json:
+            return jsonify({'error': 'Request must be JSON'}), 400
+        data = request.get_json() or {}
+        reference_category_id = data.get('reference_category_id')
+        target_product_id = data.get('target_product_id')
+        status = data.get('status')
+        if not reference_category_id:
+            return jsonify({'error': 'reference_category_id is required'}), 400
+        if not target_product_id:
+            return jsonify({'error': 'target_product_id is required'}), 400
+        if not status:
+            return jsonify({'error': 'status is required'}), 400
+        session = _get_db_session()()
+        try:
+            result = GapService(session).set_gap_item_status(
+                reference_category_id=int(reference_category_id),
+                target_product_id=int(target_product_id),
+                status=status,
+            )
+            session.commit()
+        except ValueError as exc:
+            session.rollback()
+            return jsonify({'error': str(exc)}), 400
+        except Exception as exc:
+            session.rollback()
+            logger.exception("api_gap_status failed: %s", exc)
+            return jsonify({'error': 'Internal server error'}), 500
+        return jsonify({'success': True, 'item': result})
 
     @flask_app.route('/api/scrape-status', methods=['GET'])
     def api_scrape_status():
