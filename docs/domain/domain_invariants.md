@@ -2,154 +2,90 @@
 
 ## Scope
 
-This document defines the stable domain rules of the project independent of UI details and endpoint layout.
+This document defines stable business rules for the current project domain.
 
 ## Core entities
 
 ### Store
-
-Represents a supported source shop.
+A store is a source system from which categories and products are collected.
 
 Invariants:
-
-- a store is the persisted representation of an adapter-backed source;
-- stores are synchronized from the adapter registry into the database;
-- a store must be uniquely identifiable within the database;
-- products and categories belong to exactly one store.
+- a store represents one logical catalog source
+- stores must be synchronized from the adapter registry before category/product sync can be reliable
+- a store may act as reference or target in comparison flows
 
 ### Category
-
-Represents a store-specific category.
+A category belongs to exactly one store.
 
 Invariants:
-
-- category identity is store-local, not globally shared across stores;
-- categories from different stores are related only through `category_mappings`;
-- a category belongs to exactly one store;
-- products belong to exactly one category.
+- category names are store-local, not globally unique
+- comparison is not allowed unless the selected reference category has target mappings
+- category mappings are the entry point into comparison
 
 ### Product
-
-Represents a persisted store product captured during synchronization.
+A product belongs to exactly one category and, transitively, one store.
 
 Invariants:
-
-- a product belongs to exactly one store and one category;
-- product rows are read-model data used for comparison;
-- comparison does not require live scraping once products are synchronized;
-- products are compared only within a category-mapping context.
+- a product is compared only inside the context of mapped categories
+- persisted product data is the source of truth for UI comparison
+- product freshness depends on sync lifecycle, not on user comparison requests
 
 ### CategoryMapping
-
-Represents an explicit relationship between one reference category and one target category.
+A category mapping links one reference category to one target category.
 
 Invariants:
-
-- category mappings are required for supported DB-first comparison;
-- comparison is allowed only when the selected reference category has mapped target categories;
-- mappings are many-to-many at the global level;
-- pair identity of a mapping is immutable after creation;
-- metadata such as confidence or match type may be updated without changing the linked pair.
+- mappings are many-to-many across the system
+- comparison is allowed only for mapped category pairs
+- the identity of a mapping pair is immutable after creation
+- mutable fields are metadata such as confidence or match type, not the linked pair itself
 
 ### ProductMapping
-
-Represents a confirmed product-level relationship.
+A product mapping is a confirmed cross-store match.
 
 Invariants:
-
-- confirmed product mappings are authoritative;
-- candidate matches are not persisted as product mappings automatically;
-- confirmation is an explicit action;
-- confirmed product mappings suppress ambiguity for the same compared context.
+- confirmed matches are persisted truth
+- runtime candidates are not persisted as mappings
+- once confirmed, a product pair must be excluded from “gap” output for the same context
 
 ### ScrapeRun
-
-Represents an administrative sync attempt or execution record.
+A scrape run records execution of synchronization work.
 
 Invariants:
-
-- sync operations should be observable through scrape runs;
-- scrape runs are an operational history, not domain content;
-- scrape run entries must be readable independently from sync execution.
+- sync operations should create history records
+- history is operational evidence, not business content
+- user-facing comparison should not require inspecting scrape run history to function
 
 ### GapItemStatus
-
-Represents review progress for a target-side gap product within a reference category context.
+A gap item status stores manual workflow state for target-only products in a reference-category context.
 
 Invariants:
-
-- the default state is `new` and is **implicit**;
-- only non-default states are persisted;
-- allowed persisted states are `in_progress` and `done`;
-- a status row is unique per `(reference_category_id, target_product_id)` pair;
-- `done` may be hidden by default in UI filters, but still counts in summary statistics.
+- status is contextual to `(reference_category_id, target_product_id)`
+- `new` is implicit and means “no persisted status row”
+- only non-default workflow states are stored
+- accepted stored statuses are `in_progress` and `done`
 
 ## Comparison invariants
 
-### Reference-centered comparison
+- comparison is DB-first
+- comparison is mapping-driven
+- candidate matches are computed at runtime
+- confirmed matches are persisted
+- target-only items are not the same thing as gap items until evaluated in the selected reference-category context
 
-The system uses a reference store/category as the anchor for comparison.
+## Gap invariants
 
-Invariants:
+A product appears in gap review when it is:
+- in the selected target category scope
+- not covered by confirmed `ProductMapping`
+- not included in candidate groups for the selected comparison context
 
-- one comparison request has exactly one reference category;
-- the compared target scope is limited to explicitly selected mapped target categories;
-- target categories outside the mapped set are invalid for the comparison context.
-
-### Persisted vs runtime match states
-
-There are two distinct classes of match results:
-
-1. **confirmed** — persisted in `product_mappings`;
-2. **candidate** — computed at runtime and not persisted automatically.
-
-Invariants:
-
-- confirmed matches outrank runtime candidates;
-- candidates are advisory, not authoritative;
-- target-only and reference-only results are derived after confirmed and candidate matching are applied.
-
-### No live scraping in user comparison flow
-
-Invariants:
-
-- main comparison results must be generated from persisted database state;
-- stale data is a freshness/operations concern, not a reason to switch comparison to live scraping automatically.
-
-## Gap review invariants
-
-Gap review exists to surface target products that are not already covered by confirmed mappings or candidate lists.
-
-An item is considered a gap item only if all of the following hold:
-
-- it belongs to the selected target store;
-- it belongs to one of the selected mapped target categories;
-- it is not part of a confirmed `ProductMapping` for the given comparison context;
-- it is not included among runtime candidate groups for the given comparison context.
-
-Invariants:
-
-- gap review is target-side only;
-- gap review requires mapped categories;
-- absence of mappings is a configuration problem, not an empty business result.
+Additional rules:
+- default visible statuses are `new` and `in_progress`
+- `done` may be hidden from the main list but still counted in summary
+- gap review is a manual workflow layer, not an automatic deletion or suppression layer
 
 ## Freshness invariants
 
-The system distinguishes between read-model data and synchronization operations.
-
-Invariants:
-
-- stores/categories/products in the database may become stale over time;
-- stale data should be addressed by explicit sync operations;
-- read flows should not mutate synchronization state implicitly.
-
-## Documentation invariants
-
-These rules must be reflected consistently in:
-
-- API docs,
-- service/admin docs,
-- tests,
-- future ADRs.
-
-If implementation and this document diverge, the divergence must be resolved explicitly, not silently reinterpreted.
+- stale data is an operational state, not a domain identity
+- users should be guided to `/service` when refresh is needed
+- the system should not silently switch from DB-backed comparison to live scraping to compensate for stale DB data
