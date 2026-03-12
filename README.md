@@ -75,14 +75,44 @@ python app.py
 
 ## База даних та міграції
 
-ORM: SQLAlchemy 2.x, SQLite за замовчуванням (`sqlite:///pricewatch.db`).
+ORM: SQLAlchemy 2.x. За замовчуванням SQLite (`sqlite:///pricewatch.db`).
+PostgreSQL підтримується як альтернативний backend (ADR-0006).
+
+**Alembic є канонічним шляхом керування схемою для не-тестових середовищ.**
 
 ```bash
-export DATABASE_URL=sqlite:///pricewatch.db
+# SQLite (за замовчуванням, без змінних оточення):
+PYTHONPATH=. alembic upgrade head
+
+# PostgreSQL:
+export DATABASE_URL=postgresql+psycopg2://user:pass@host/dbname
 PYTHONPATH=. alembic upgrade head
 ```
 
+Перевірка роботи з PostgreSQL: `tests/verify_postgres.py` (інструкції всередині файлу).
+
 Докладніше: [docs/operations/sync_lifecycle.md](docs/operations/sync_lifecycle.md).
+
+---
+
+## Валідація запитів (Pydantic)
+
+Активні write-ендпоінти (`/api/comparison`, `/api/gap`, `/api/gap/status` та ін.)
+використовують Pydantic для валідації тіла запиту на HTTP-рівні.
+
+При помилці валідації відповідь:
+
+```json
+{
+  "error": "validation_error",
+  "message": "Request body is invalid.",
+  "details": [{"field": "...", "message": "..."}]
+}
+```
+
+HTTP-статус: `422` для помилок Pydantic, `400` для не-JSON контенту.
+
+Деталі у [CONTRIBUTING.md](CONTRIBUTING.md) розділ "Boundary validation".
 
 ---
 

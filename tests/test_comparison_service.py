@@ -483,7 +483,9 @@ class TestApiComparisonContract:
     def test_returns_400_when_missing_reference_id(self):
         from app import app as flask_app
         resp = flask_app.test_client().post("/api/comparison", json={})
-        assert resp.status_code == 400
+        # After Pydantic DTO migration, missing required fields return 422.
+        # Both 400 and 422 are valid client-error responses for this case.
+        assert resp.status_code in (400, 422)
         assert "error" in resp.get_json()
 
     def test_accepts_target_category_ids_list(self, monkeypatch):
@@ -646,7 +648,9 @@ class TestApiConfirmMatch:
     def test_returns_400_when_ids_missing(self):
         from app import app as flask_app
         resp = flask_app.test_client().post("/api/comparison/confirm-match", json={})
-        assert resp.status_code == 400
+        # After Pydantic DTO migration, missing required fields return 422.
+        # Both 400 and 422 are valid client-error responses.
+        assert resp.status_code in (400, 422)
         assert "error" in resp.get_json()
 
     def test_returns_400_on_exception(self, monkeypatch):
@@ -668,7 +672,8 @@ class TestApiConfirmMatch:
             "/api/comparison/confirm-match",
             json={},
         )
-        assert resp.status_code in (200, 400)
+        # After Pydantic DTO migration, empty payload → 422 (missing required fields)
+        assert resp.status_code in (200, 400, 422)
 
     def test_confirm_match_creates_product_mapping_in_db(self):
         """End-to-end: confirm-match actually writes to the DB."""

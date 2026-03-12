@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import List, Optional
 
 from sqlalchemy import (
     Boolean,
-    Column,
     DateTime,
     Float,
     ForeignKey,
     Index,
     Integer,
     JSON,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -23,6 +24,17 @@ from .base import Base
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+# ---------------------------------------------------------------------------
+# Type aliases for semantic clarity
+# ---------------------------------------------------------------------------
+# PRICE_NUMERIC: exact decimal storage for monetary/price values.
+# Precision=12, scale=4 accommodates most real-world currencies.
+# SQLite stores Numeric as TEXT and does exact round-trips; PostgreSQL uses
+# NUMERIC natively.  Do NOT use Float for price fields — floating-point
+# representation causes rounding errors in comparisons and aggregations.
+PRICE_NUMERIC = Numeric(precision=12, scale=4, asdecimal=True)
 
 
 class Store(Base):
@@ -120,7 +132,9 @@ class Product(Base):
     name: Mapped[str] = mapped_column(String(1000), nullable=False)
     normalized_name: Mapped[Optional[str]] = mapped_column(String(1000), nullable=True)
     name_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
-    price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # price: exact numeric — avoids floating-point rounding errors.
+    # Alembic migration: see versions/b2c3d4e5f6a7_price_fields_to_numeric.py
+    price: Mapped[Optional[Decimal]] = mapped_column(PRICE_NUMERIC, nullable=True)
     currency: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     product_url: Mapped[str] = mapped_column(String(2000), nullable=False)
@@ -201,7 +215,8 @@ class ProductPriceHistory(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     product_id: Mapped[int] = mapped_column(ForeignKey("products.id"), nullable=False)
     scrape_run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("scrape_runs.id"), nullable=True)
-    price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    # price: exact numeric — see PRICE_NUMERIC note above
+    price: Mapped[Optional[Decimal]] = mapped_column(PRICE_NUMERIC, nullable=True)
     currency: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     source_url: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)

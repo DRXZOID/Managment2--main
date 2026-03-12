@@ -205,7 +205,11 @@ class TestCreateCategoryMapping:
             raise ValueError("duplicate mapping")
 
         monkeypatch.setattr(MappingService, "create_category_mapping", fail)
-        resp = app.test_client().post("/api/category-mappings", json={})
+        # Send a valid payload so Pydantic passes; error comes from the service layer (400)
+        resp = app.test_client().post(
+            "/api/category-mappings",
+            json={"reference_category_id": 10, "target_category_id": 20},
+        )
         assert resp.status_code == 400
         assert "error" in resp.get_json()
 
@@ -231,8 +235,8 @@ class TestUpdateCategoryMapping:
         app.test_client().put(
             "/api/category-mappings/5",
             json={
-                "reference_category_id": 999,  # must be silently ignored
-                "target_category_id": 888,       # same
+                # reference_category_id and target_category_id are NOT sent —
+                # the PUT schema only accepts match_type/confidence (pair is immutable)
                 "match_type": "exact",
                 "confidence": 0.99,
             },

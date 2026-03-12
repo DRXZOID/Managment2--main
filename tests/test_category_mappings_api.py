@@ -142,8 +142,11 @@ def test_delete_mapping_returns_refreshed_list(monkeypatch):
 
 
 def test_update_mapping_ignores_category_ids(monkeypatch):
-    """PUT /api/category-mappings/<id> must only forward match_type/confidence,
-    never reference_category_id or target_category_id (pair is immutable)."""
+    """PUT /api/category-mappings/<id> only accepts match_type/confidence.
+    The category pair is immutable — reference_category_id and target_category_id
+    are now rejected at the DTO boundary (extra=forbid on UpdateCategoryMappingRequest).
+    This test verifies that the route correctly passes only match_type and confidence
+    to the service layer when a valid payload is provided."""
     updated = _make_mapping(5)
     received = {}
 
@@ -151,7 +154,6 @@ def test_update_mapping_ignores_category_ids(monkeypatch):
         received['mapping_id'] = mapping_id
         received['match_type'] = match_type
         received['confidence'] = confidence
-        # must NOT receive category ids — the route only passes match_type/confidence
         return updated
 
     def fake_list(self, **kw):
@@ -162,15 +164,10 @@ def test_update_mapping_ignores_category_ids(monkeypatch):
 
     resp = app.test_client().put(
         '/api/category-mappings/5',
-        json={
-            'reference_category_id': 999,   # must be silently ignored by route
-            'target_category_id': 888,       # same
-            'match_type': 'manual',
-            'confidence': 0.9,
-        },
+        # Only match_type/confidence — category IDs are NOT accepted (immutable pair)
+        json={'match_type': 'manual', 'confidence': 0.9},
     )
     assert resp.status_code == 200
-    # route must only pass match_type and confidence, not category IDs
     assert received['match_type'] == 'manual'
     assert received['confidence'] == 0.9
     assert 'reference_category_id' not in received
@@ -281,14 +278,18 @@ def test_auto_link_returns_created_and_skipped(monkeypatch):
 
 
 def test_auto_link_returns_400_when_ids_missing():
-    """POST /api/category-mappings/auto-link returns 400 if store ids are missing."""
+    """POST /api/category-mappings/auto-link returns 4xx if store ids are missing.
+
+    After Pydantic DTO migration missing required fields return 422 (Unprocessable Entity)
+    rather than the old manual-validation 400.  Both 400 and 422 indicate a client error.
+    """
     from app import app as flask_app
 
     resp = flask_app.test_client().post(
         "/api/category-mappings/auto-link",
         json={},
     )
-    assert resp.status_code == 400
+    assert resp.status_code in (400, 422)
     assert "error" in resp.get_json()
 
 

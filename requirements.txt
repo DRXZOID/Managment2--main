@@ -8,4 +8,4 @@ lxml>=4.9.3
 brotli>=1.0.9
 SQLAlchemy>=2.0.25
 alembic>=1.13.1
-
+pydantic>=2.7.0

@@ -1,6 +1,6 @@
 # ADR-0006: Support PostgreSQL as an Alternative Database Backend and Use Pydantic for Boundary Validation
 
-- **Status:** Proposed
+- **Status:** Accepted — implemented
 - **Date:** 2026-03-12
 - **Decision Makers:** Project maintainers
 - **Related RFCs:** RFC-006 — PostgreSQL Backend Enablement; RFC-007 — Pydantic Boundary Validation Rollout

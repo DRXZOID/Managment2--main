@@ -31,6 +31,15 @@ from pricewatch.services.category_matching_service import CategoryMatchingServic
 from pricewatch.db.repositories.category_repository import list_mapped_target_categories
 from pricewatch.db.models import Store, ProductMapping
 from pricewatch.services.gap_service import GapService
+# Boundary-validation schemas (Pydantic DTOs — only at HTTP boundary)
+from pricewatch.schemas.validation import parse_request_body
+from pricewatch.schemas.requests.comparison import ComparisonRequest, ConfirmMatchRequest
+from pricewatch.schemas.requests.gap import GapRequest, GapStatusRequest
+from pricewatch.schemas.requests.mappings import (
+    AutoLinkCategoryMappingsRequest,
+    CreateCategoryMappingRequest,
+    UpdateCategoryMappingRequest,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +111,7 @@ def create_app(config_override=None):
 # ---------------------------------------------------------------------------
 
 def _item_to_dict(item):
-    # возвращаем числовую цену, если возможно
+    # Parse price from raw string representation (legacy /api/check endpoint)
     price_value, currency = parse_price_value(item.price_raw)
     return {
         "name": item.name,
@@ -202,7 +211,7 @@ def _serialize_mapping(mapping):
     }
 
 
-def _mapping_list_payload(service, reference_store_id, target_store_id):
+def _mapping_list_payload(service, reference_store_id, target_store_id) -> Dict[str, Any]:
     return {
         "mappings": [
             _serialize_mapping(m)
@@ -366,7 +375,7 @@ def _register_routes(flask_app):  # noqa: C901  (complexity OK for route hub)
         urls = data.get('urls', [])
         category = data.get('category') or None
         if not urls:
-            return jsonify({'error': 'Не указаны URL'}), 400
+            return jsonify({'error': 'No URLs provided'}), 400
         reference = _reg.reference_adapter()
         builder = ReferenceCatalogBuilder(reference, default_client)
         main_products = builder.build([category] if category else None)
@@ -567,19 +576,15 @@ def _register_routes(flask_app):  # noqa: C901  (complexity OK for route hub)
     @flask_app.route('/api/category-mappings/auto-link', methods=['POST'])
     def api_auto_link_category_mappings():
         """Auto-create category mappings by exact normalized_name match."""
-        if not request.is_json:
-            return jsonify({'error': 'Request must be JSON'}), 400
-        data = request.get_json() or {}
-        reference_store_id = data.get('reference_store_id')
-        target_store_id = data.get('target_store_id')
-        if not reference_store_id or not target_store_id:
-            return jsonify({'error': 'reference_store_id and target_store_id are required'}), 400
+        payload, err = parse_request_body(AutoLinkCategoryMappingsRequest)
+        if err:
+            return err
         session = _get_db_session()()
         try:
             result = CategoryMatchingService.auto_link(
                 session,
-                reference_store_id=int(reference_store_id),
-                target_store_id=int(target_store_id),
+                reference_store_id=payload.reference_store_id,
+                target_store_id=payload.target_store_id,
             )
             session.commit()
         except ValueError as exc:
@@ -601,15 +606,17 @@ def _register_routes(flask_app):  # noqa: C901  (complexity OK for route hub)
 
     @flask_app.route('/api/category-mappings', methods=['POST'])
     def api_create_category_mapping():
+        payload, err = parse_request_body(CreateCategoryMappingRequest)
+        if err:
+            return err
         session = _get_db_session()()
-        data = request.get_json() or {}
         service = MappingService(session)
         try:
             mapping = service.create_category_mapping(
-                reference_category_id=data.get('reference_category_id'),
-                target_category_id=data.get('target_category_id'),
-                match_type=data.get('match_type'),
-                confidence=data.get('confidence'),
+                reference_category_id=payload.reference_category_id,
+                target_category_id=payload.target_category_id,
+                match_type=payload.match_type,
+                confidence=payload.confidence,
             )
             session.commit()
         except Exception as exc:
@@ -617,20 +624,22 @@ def _register_routes(flask_app):  # noqa: C901  (complexity OK for route hub)
             return jsonify({'error': str(exc)}), 400
         reference_store_id = request.args.get('reference_store_id', type=int)
         target_store_id = request.args.get('target_store_id', type=int)
-        payload = dict(_mapping_list_payload(service, reference_store_id, target_store_id))
-        payload['mapping'] = _serialize_mapping(mapping)
-        return jsonify(payload)
+        response_payload = dict(_mapping_list_payload(service, reference_store_id, target_store_id))
+        response_payload['mapping'] = _serialize_mapping(mapping)
+        return jsonify(response_payload)
 
     @flask_app.route('/api/category-mappings/<int:mapping_id>', methods=['PUT'])
     def api_update_category_mapping(mapping_id: int):
+        payload, err = parse_request_body(UpdateCategoryMappingRequest)
+        if err:
+            return err
         session = _get_db_session()()
-        data = request.get_json() or {}
         service = MappingService(session)
         try:
             mapping = service.update_category_mapping(
                 mapping_id,
-                match_type=data.get('match_type'),
-                confidence=data.get('confidence'),
+                match_type=payload.match_type,
+                confidence=payload.confidence,
             )
             session.commit()
         except Exception as exc:
@@ -638,9 +647,9 @@ def _register_routes(flask_app):  # noqa: C901  (complexity OK for route hub)
             return jsonify({'error': str(exc)}), 400
         reference_store_id = request.args.get('reference_store_id', type=int)
         target_store_id = request.args.get('target_store_id', type=int)
-        payload = dict(_mapping_list_payload(service, reference_store_id, target_store_id))
-        payload['mapping'] = _serialize_mapping(mapping)
-        return jsonify(payload)
+        response_payload = dict(_mapping_list_payload(service, reference_store_id, target_store_id))
+        response_payload['mapping'] = _serialize_mapping(mapping)
+        return jsonify(response_payload)
 
     @flask_app.route('/api/category-mappings/<int:mapping_id>', methods=['DELETE'])
     def api_delete_category_mapping(mapping_id: int):
@@ -684,22 +693,18 @@ def _register_routes(flask_app):  # noqa: C901  (complexity OK for route hub)
     @flask_app.route('/api/comparison/confirm-match', methods=['POST'])
     def api_comparison_confirm_match():
         """Persist a confirmed product match into product_mappings."""
-        if not request.is_json:
-            return jsonify({'error': 'Request must be JSON'}), 400
-        data = request.get_json() or {}
-        ref_id = data.get('reference_product_id')
-        tgt_id = data.get('target_product_id')
-        if not ref_id or not tgt_id:
-            return jsonify({'error': 'reference_product_id and target_product_id are required'}), 400
+        payload, err = parse_request_body(ConfirmMatchRequest)
+        if err:
+            return err
         session = _get_db_session()()
         try:
             pm = create_product_mapping(
                 session,
-                reference_product_id=int(ref_id),
-                target_product_id=int(tgt_id),
-                match_status=data.get('match_status', 'confirmed'),
-                confidence=data.get('confidence'),
-                comment=data.get('comment'),
+                reference_product_id=payload.reference_product_id,
+                target_product_id=payload.target_product_id,
+                match_status=payload.match_status or 'confirmed',
+                confidence=payload.confidence,
+                comment=payload.comment,
             )
             session.commit()
         except Exception as exc:
@@ -711,24 +716,18 @@ def _register_routes(flask_app):  # noqa: C901  (complexity OK for route hub)
     @flask_app.route('/api/comparison', methods=['POST'])
     def api_comparison():
         """Compare products from a reference category against mapped target categories."""
-        if not request.is_json:
-            return jsonify({'error': 'Request must be JSON'}), 400
-        payload = request.get_json() or {}
-        ref_category_id = payload.get('reference_category_id')
-        if not ref_category_id:
-            return jsonify({'error': 'reference_category_id is required'}), 400
-        target_category_ids = payload.get('target_category_ids')
-        target_category_id = payload.get('target_category_id')
-        target_store_id = payload.get('target_store_id')
+        payload, err = parse_request_body(ComparisonRequest)
+        if err:
+            return err
         session = _get_db_session()()
         try:
-            svc_kwargs: dict = {"reference_category_id": int(ref_category_id)}
-            if target_category_ids is not None:
-                svc_kwargs["target_category_ids"] = [int(i) for i in target_category_ids]
-            elif target_category_id is not None:
-                svc_kwargs["target_category_id"] = int(target_category_id)
-            if target_store_id is not None:
-                svc_kwargs["target_store_id"] = int(target_store_id)
+            svc_kwargs: dict = {"reference_category_id": payload.reference_category_id}
+            if payload.target_category_ids is not None:
+                svc_kwargs["target_category_ids"] = payload.target_category_ids
+            elif payload.target_category_id is not None:
+                svc_kwargs["target_category_id"] = payload.target_category_id
+            if payload.target_store_id is not None:
+                svc_kwargs["target_store_id"] = payload.target_store_id
             result = ComparisonService(session).compare(**svc_kwargs)
         except ValueError as exc:
             return jsonify({'error': str(exc)}), 400
@@ -740,32 +739,18 @@ def _register_routes(flask_app):  # noqa: C901  (complexity OK for route hub)
     @flask_app.route('/api/gap', methods=['POST'])
     def api_gap():
         """Return grouped target-only (gap) items for a reference category + target categories."""
-        if not request.is_json:
-            return jsonify({'error': 'Request must be JSON'}), 400
-        payload = request.get_json() or {}
-        target_store_id = payload.get('target_store_id')
-        reference_category_id = payload.get('reference_category_id')
-        target_category_ids = payload.get('target_category_ids')
-        if not target_store_id:
-            return jsonify({'error': 'target_store_id is required'}), 400
-        if not reference_category_id:
-            return jsonify({'error': 'reference_category_id is required'}), 400
-        if not isinstance(target_category_ids, list) or not target_category_ids:
-            return jsonify({'error': 'target_category_ids must be a non-empty list'}), 400
-        search = payload.get('search') or None
-        only_available = payload.get('only_available')
-        if only_available is not None:
-            only_available = bool(only_available)
-        statuses = payload.get('statuses') or None
+        payload, err = parse_request_body(GapRequest)
+        if err:
+            return err
         session = _get_db_session()()
         try:
             result = GapService(session).build_gap_view(
-                target_store_id=int(target_store_id),
-                reference_category_id=int(reference_category_id),
-                target_category_ids=[int(i) for i in target_category_ids],
-                search=search,
-                only_available=only_available,
-                statuses=statuses,
+                target_store_id=payload.target_store_id,
+                reference_category_id=payload.reference_category_id,
+                target_category_ids=payload.target_category_ids,
+                search=payload.search,
+                only_available=payload.only_available,
+                statuses=payload.statuses,
             )
         except ValueError as exc:
             return jsonify({'error': str(exc)}), 400
@@ -777,24 +762,15 @@ def _register_routes(flask_app):  # noqa: C901  (complexity OK for route hub)
     @flask_app.route('/api/gap/status', methods=['POST'])
     def api_gap_status():
         """Persist a gap item review status (in_progress or done)."""
-        if not request.is_json:
-            return jsonify({'error': 'Request must be JSON'}), 400
-        data = request.get_json() or {}
-        reference_category_id = data.get('reference_category_id')
-        target_product_id = data.get('target_product_id')
-        status = data.get('status')
-        if not reference_category_id:
-            return jsonify({'error': 'reference_category_id is required'}), 400
-        if not target_product_id:
-            return jsonify({'error': 'target_product_id is required'}), 400
-        if not status:
-            return jsonify({'error': 'status is required'}), 400
+        payload, err = parse_request_body(GapStatusRequest)
+        if err:
+            return err
         session = _get_db_session()()
         try:
             result = GapService(session).set_gap_item_status(
-                reference_category_id=int(reference_category_id),
-                target_product_id=int(target_product_id),
-                status=status,
+                reference_category_id=payload.reference_category_id,
+                target_product_id=payload.target_product_id,
+                status=payload.status,
             )
             session.commit()
         except ValueError as exc:

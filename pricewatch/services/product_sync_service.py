@@ -83,19 +83,24 @@ class ProductSyncService:
                 return trimmed
         return trimmed
 
-    # Добавляем централизованную нормализацию product DTO
+    # Centralized product DTO normalization.
+    # TODO(Follow-up B): migrate this method to use ProductIngestDTO.model_validate()
+    # from pricewatch.schemas.sync.product — foundation is laid in ADR-0006 commit 10.
+    # The ProductIngestDTO already handles price coercion, URL normalization and field aliases.
     def _normalize_product_dto(self, item: Any, category_url: str | None) -> Dict[str, Any]:
-        """
-        Возвращает нормализованный словарь с ключами:
-        name, product_url, price, currency, price_raw, source_url, external_id, description, is_available
+        """Normalize a raw adapter product item into a canonical dict.
 
-        Правила:
-        - предпочитать числовое поле `price` (int/float или строку, приводимую к числу);
-          если нет — парсить `price_raw` через `parse_price_value`.
-        - предпочитать `currency` из DTO, иначе использовать распознанную из `price_raw`.
-        - предпочитать `source_url`, затем `source`, затем `source_site` как fallback;
-          нормализовать URL через `_normalize_product_url`.
-        - поддерживать dict- и object-формат DTO.
+        Returns a dict with keys:
+          name, product_url, price, currency, price_raw, source_url,
+          external_id, description, is_available, raw_product_url.
+
+        Rules:
+        - Prefer the numeric `price` field (int/float or a numeric string);
+          fall back to parsing `price_raw` via `parse_price_value`.
+        - Prefer `currency` from the item; fall back to currency parsed from `price_raw`.
+        - Prefer `source_url`, then `source`, then `source_site` for source tracking;
+          normalize URL via `_normalize_product_url`.
+        - Supports both dict and object-style item formats.
         """
         def get_field(name: str):
             if isinstance(item, dict):
@@ -108,7 +113,7 @@ class ProductSyncService:
         external_id = get_field("external_id")
         is_available = get_field("is_available")
 
-        # product URL: prefer explicit product/url fields
+        # product URL: prefer explicit product_url then url
         raw_product_url = self._extract_product_url(item)
         product_url = self._normalize_product_url(raw_product_url, category_url)
 
@@ -122,25 +127,21 @@ class ProductSyncService:
         parsed_price = None
         parsed_currency = None
 
-        # Helper to try convert explicit price to float if possible
         if explicit_price is not None:
             try:
                 if isinstance(explicit_price, (int, float)):
                     parsed_price = float(explicit_price)
                 elif isinstance(explicit_price, str):
-                    # first: try direct numeric conversion (covers "12999")
                     stripped = explicit_price.strip()
                     if stripped:
                         try:
                             parsed_price = float(stripped)
                         except Exception:
-                            # direct conversion failed -> try cleaned numeric conversion
                             try:
                                 cleaned = stripped.replace('\u00A0', '').replace(' ', '').replace(',', '.')
                                 m = re.search(r"-?\d+(?:\.\d+)?", cleaned)
                                 if m:
                                     parsed_price = float(m.group(0))
-                                    # try to capture currency from the original explicit string
                                     try:
                                         _, maybe_curr = parse_price_value(explicit_price)
                                         if maybe_curr:
@@ -148,35 +149,26 @@ class ProductSyncService:
                                     except Exception:
                                         pass
                                 else:
-                                    # final fallback: use parse_price_value to also capture currency
                                     parsed_price, parsed_currency = parse_price_value(explicit_price)
                             except Exception:
                                 parsed_price, parsed_currency = None, None
-                    else:
-                        parsed_price = None
                 else:
-                    # try generic conversion
                     parsed_price = float(explicit_price)
             except Exception:
-                # couldn't convert explicit price -> ignore and fallback to price_raw
                 parsed_price = None
 
-        # If explicit price (including parsed from explicit string) didn't produce a value,
-        # try parse_price_value on price_raw as fallback
+        # Fall back to price_raw when explicit price produced no value
         if parsed_price is None:
             try:
                 parsed_price_from_raw, parsed_currency_from_raw = parse_price_value(price_raw)
             except Exception:
                 parsed_price_from_raw, parsed_currency_from_raw = None, None
-            # if we previously obtained a currency from parsing explicit_price, prefer it for now
             if parsed_price_from_raw is not None:
                 parsed_price = parsed_price_from_raw
-                # only set currency from raw if none set yet
                 if not parsed_currency:
                     parsed_currency = parsed_currency_from_raw
 
         price = parsed_price
-        # currency: explicit override takes precedence
         currency = get_field("currency") or parsed_currency
 
         return {
