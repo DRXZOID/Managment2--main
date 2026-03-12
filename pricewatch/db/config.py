@@ -76,10 +76,17 @@ def _is_test_or_dev_mode(app_config: Optional[dict] = None) -> bool:
     if cfg.get("TESTING"):
         return True
 
-    # Local / dev environments
-    if env_name in {"development", "dev", "test", "testing", ""}:
+    # Local / dev environments with explicit names
+    if env_name in {"development", "dev", "test", "testing"}:
         return True
 
+    # When no environment is set, be conservative for non-SQLite backends.
+    # Allow implicit create_all only for SQLite URLs unless explicitly opted in.
+    if env_name == "":
+        url = resolve_database_url(app_config)
+        if _is_sqlite_url(url):
+            return True
+        return False
     return False
 
 
