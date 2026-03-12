@@ -1,9 +1,17 @@
 from __future__ import annotations
 
+from decimal import Decimal
+from typing import Union
+
 from sqlalchemy.orm import Session
 
 from pricewatch.db.models import Product, ProductPriceHistory, utcnow
 from pricewatch.db.services.normalization import normalize_product_name
+
+# Price values accepted by this module.  The ORM model uses Numeric(12,4)
+# which maps to Decimal on read.  Both float and Decimal are accepted on
+# write to remain backward-compatible with callers that still pass floats.
+_PriceType = Union[Decimal, float, None]
 
 
 def get_product_by_url(session: Session, store_id: int, product_url: str) -> Product | None:
@@ -30,7 +38,7 @@ def add_price_history(
     session: Session,
     *,
     product_id: int,
-    price: float | None,
+    price: _PriceType,
     currency: str | None,
     source_url: str | None,
     scrape_run_id: int | None,
@@ -47,8 +55,20 @@ def add_price_history(
     return history
 
 
-def _price_changed(old: float | None, new: float | None) -> bool:
-    return (old is None) != (new is None) or (old is not None and new is not None and old != new)
+def _price_changed(old: _PriceType, new: _PriceType) -> bool:
+    """Return True if the price value has materially changed.
+
+    Compares using Decimal-safe equality to avoid floating-point noise.
+    """
+    if old is None and new is None:
+        return False
+    if (old is None) != (new is None):
+        return True
+    # Normalize to Decimal for exact comparison
+    try:
+        return Decimal(str(old)) != Decimal(str(new))
+    except Exception:
+        return old != new
 
 
 def upsert_product(
@@ -57,7 +77,7 @@ def upsert_product(
     store_id: int,
     product_url: str,
     name: str,
-    price: float | None = None,
+    price: _PriceType = None,
     currency: str | None = None,
     category_id: int | None = None,
     external_id: str | None = None,

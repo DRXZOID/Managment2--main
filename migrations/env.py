@@ -16,9 +16,20 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
+# ---------------------------------------------------------------------------
+# Alembic is the canonical non-test schema authority.
+# For local SQLite dev without a DATABASE_URL the default fallback is used.
+# For PostgreSQL always set DATABASE_URL and run: alembic upgrade head
+# ---------------------------------------------------------------------------
+_SQLITE_DEFAULT = "sqlite:///pricewatch.db"
+
 
 def get_url() -> str:
-    return os.getenv("DATABASE_URL", "sqlite:///pricewatch.db")
+    return os.getenv("DATABASE_URL", _SQLITE_DEFAULT)
+
+
+def _is_sqlite(url: str) -> bool:
+    return url.startswith("sqlite")
 
 
 def run_migrations_offline() -> None:
@@ -28,6 +39,8 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        # render_as_batch allows ALTER TABLE on SQLite via table recreation
+        render_as_batch=_is_sqlite(url),
     )
 
     with context.begin_transaction():
@@ -35,8 +48,9 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    url = get_url()
     connectable = create_engine(
-        get_url(),
+        url,
         poolclass=pool.NullPool,
         future=True,
     )
@@ -45,6 +59,8 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
+            # render_as_batch allows ALTER TABLE on SQLite via table recreation
+            render_as_batch=_is_sqlite(url),
         )
 
         with context.begin_transaction():

@@ -151,3 +151,114 @@ Avoid the following unless there is an explicit ADR or approved refactor plan:
 - treating gap status rows as a complete set of all visible gap items
 - adding product-facing dependencies on legacy/debug endpoints
 - encoding critical invariants only in README prose without docs/tests alignment
+- importing `pricewatch.schemas.*` from repository code (violates ADR-0006 boundary)
+- adding business logic inside Pydantic validators (validators normalize shape only)
+- calling `Base.metadata.create_all()` outside of test/dev helpers (use `alembic upgrade head` instead)
+- using `Float` for price/monetary fields (use `Numeric(12, 4)` — see ADR-0006)
+
+---
+
+## Database and schema management
+
+### Default backend
+
+SQLite is the default backend for local and lightweight development.
+No additional configuration is required.
+
+### PostgreSQL support
+
+PostgreSQL is a supported alternative backend.  To use it:
+
+```bash
+export DATABASE_URL=postgresql+psycopg2://user:pass@host/dbname
+alembic upgrade head
+flask run
+```
+
+PostgreSQL behavior is verified via `tests/verify_postgres.py` (see that file for setup instructions).
+
+### Schema management — Alembic is the canonical authority
+
+**For non-test environments (especially PostgreSQL) Alembic is the ONLY supported schema management path.**
+
+- Never rely on `init_db()` / `Base.metadata.create_all()` in production or staging.
+- Always run `alembic upgrade head` before starting the application after a schema change.
+- Add a new Alembic migration whenever the ORM models change.
+- For SQLite local development, runtime `create_all` is still available as a convenience — but it is not the recommended path even there.
+
+### Adding a new Alembic migration
+
+```bash
+# Generate migration from ORM model changes:
+alembic revision --autogenerate -m "describe the change"
+# Review the generated migration in migrations/versions/
+# Apply it:
+alembic upgrade head
+```
+
+For SQLite migrations that use ALTER TABLE, ensure `render_as_batch=True` is set in `migrations/env.py` (it is already configured).
+
+---
+
+## Boundary validation (Pydantic schemas)
+
+### What the schemas/ package is for
+
+`pricewatch/schemas/` contains Pydantic DTOs for **boundary validation only**.  These are used at:
+
+- HTTP request boundaries (`schemas/requests/`) — validate POST/PUT/PATCH payloads
+- Sync/import boundaries (`schemas/sync/`) — normalize raw adapter output before service processing
+
+### How to add a new request DTO
+
+1. Create a class in `pricewatch/schemas/requests/<domain>.py` that extends `PricewatchBaseModel`.
+2. Use `parse_request_body(MySchema)` in the Flask route.
+3. Business validation stays in the service layer — not in validators.
+
+```python
+# Example route pattern
+from pricewatch.schemas.validation import parse_request_body
+from pricewatch.schemas.requests.my_domain import MyRequest
+
+@app.route("/api/something", methods=["POST"])
+def api_something():
+    payload, err = parse_request_body(MyRequest)
+    if err:
+        return err   # (response, 422) tuple
+    result = MyService(session).do_work(field=payload.field)
+    return jsonify(result)
+```
+
+### How to add a sync/import DTO
+
+1. Create a class in `pricewatch/schemas/sync/<domain>.py` that extends `LooseBaseModel`.
+2. Use `MyDTO.model_validate(raw_item)` in the service to normalize raw adapter data.
+3. Check `dto.is_valid` before persisting.
+
+### Firm boundaries — never cross these
+
+1. **Repositories MUST NOT import anything from `pricewatch.schemas`.**
+   Repository methods accept plain Python scalars, `datetime`, `Decimal`, and ORM entities only.
+2. **Business logic MUST NOT live inside Pydantic validators.**
+   Validators normalize shape and primitive types; services decide workflow.
+3. **Response DTOs are OPTIONAL** — only add them when serializer duplication is clearly significant.
+
+### Validation error contract
+
+When Pydantic validation fails on a migrated route, the response is:
+
+```json
+{
+  "error": "validation_error",
+  "message": "Request body is invalid.",
+  "details": [
+    {"field": "reference_category_id", "message": "Field required"},
+    ...
+  ]
+}
+```
+
+HTTP status: `422 Unprocessable Entity` for Pydantic validation failures,
+`400 Bad Request` for missing/non-JSON body.
+
+---

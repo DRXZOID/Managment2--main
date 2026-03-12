@@ -15,6 +15,7 @@ from pricewatch.services.utils import resolve_adapter_for_store
 from pricewatch.db.models import Store
 from pricewatch.core.plugin_base import BaseShopAdapter
 from __init__ import default_client
+from pricewatch.schemas.sync.category import CategoryIngestDTO
 
 import logging
 from pricewatch.services.validation_diagnostics import ensure_metadata, record_validation_error
@@ -119,11 +120,13 @@ class CategorySyncService:
         try:
             raw_categories = adapter.get_categories(default_client) or []
             count = 0
-            for cat in raw_categories:
-                name = cat.get("name") if isinstance(cat, dict) else getattr(cat, "name", None)
-                url = cat.get("url") if isinstance(cat, dict) else getattr(cat, "url", None)
-                external_id = cat.get("external_id") if isinstance(cat, dict) else getattr(cat, "external_id", None)
-                if not name:
+            for raw_cat in raw_categories:
+                # Normalize raw adapter output through CategoryIngestDTO boundary DTO.
+                # This replaces ad hoc dict/attr access with a declared schema.
+                dto = CategoryIngestDTO.model_validate(
+                    raw_cat if isinstance(raw_cat, dict) else vars(raw_cat) if hasattr(raw_cat, '__dict__') else {"name": getattr(raw_cat, "name", None), "url": getattr(raw_cat, "url", None), "external_id": getattr(raw_cat, "external_id", None)}
+                )
+                if not dto.is_valid:
                     # skip invalid category and record metadata
                     self._record_validation_error(
                         metadata,
@@ -132,15 +135,15 @@ class CategorySyncService:
                         getattr(adapter, "name", None),
                         store,
                         category_name=None,
-                        category_url=url,
+                        category_url=dto.url,
                     )
                     continue
                 upsert_category(
                     self.session,
                     store_id=store.id,
-                    name=name,
-                    external_id=external_id,
-                    url=url,
+                    name=dto.name,
+                    external_id=dto.external_id,
+                    url=dto.url,
                 )
                 count += 1
             update_counters(self.session, run.id, categories_processed=count, absolute=True)
