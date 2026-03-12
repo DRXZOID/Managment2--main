@@ -44,7 +44,6 @@ The reference store is determined by `is_reference=true` flag, falling back to t
 **Deprecation headers included in response:**
 - `Deprecation: true`
 - `Link: </api/stores/{store_id}/categories>; rel="successor-version"`
-- `Sunset: TBD — after internal consumer migration is complete`
 
 **Response:**
 ```json
