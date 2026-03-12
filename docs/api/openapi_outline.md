@@ -21,7 +21,7 @@ Excluded from future OpenAPI by default:
 Representative routes:
 - `GET /api/categories`
 - `GET /api/stores`
-- `GET /api/comparison`
+- `POST /api/comparison`
 - gap-related read/update endpoints that are part of supported review workflow
 
 Primary characteristics:
