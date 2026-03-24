@@ -504,6 +504,29 @@ class ComparisonService:
     # Eligible target products for manual picker
     # ------------------------------------------------------------------
 
+    def _resolve_valid_mapped_target_cat_ids(
+        self,
+        reference_product_id: int,
+    ) -> tuple[int, set[int]]:
+        """Return ``(reference_category_id, valid_mapped_target_category_ids)``.
+
+        Loads the reference product, then queries all mapped target categories
+        for its category.  Raises ``ValueError`` if the reference product does
+        not exist.
+
+        Used as a shared building block by both ``validate_target_scope`` and
+        ``get_eligible_target_products`` to avoid duplicating mapping-lookup
+        logic.
+        """
+        from pricewatch.db.models import Product as _Product  # avoid circular at module level
+
+        ref_prod = self.session.get(_Product, reference_product_id)
+        if ref_prod is None:
+            raise ValueError(f"Reference product {reference_product_id} not found")
+        mappings = list_mapped_target_categories(self.session, ref_prod.category_id)
+        valid_ids = {m.target_category_id for m in mappings}
+        return int(ref_prod.category_id), valid_ids
+
     def validate_target_scope(
         self,
         *,
@@ -520,23 +543,16 @@ class ComparisonService:
         """
         from pricewatch.db.models import Product  # local import to avoid circular at module level
 
-        # Load reference product and its category
-        ref_prod = self.session.get(Product, reference_product_id)
-        if ref_prod is None:
-            raise ValueError(f"Reference product {reference_product_id} not found")
-
-        # Load valid mapped target categories for the reference product's category
-        all_mappings = list_mapped_target_categories(
-            self.session, ref_prod.category_id
+        ref_cat_id, valid_target_cat_ids = self._resolve_valid_mapped_target_cat_ids(
+            reference_product_id
         )
-        valid_target_cat_ids = {m.target_category_id for m in all_mappings}
 
         # Each supplied category must be a valid mapped category
         for cat_id in target_category_ids:
             if cat_id not in valid_target_cat_ids:
                 raise ValueError(
                     f"Category {cat_id} is not a valid mapped target category "
-                    f"for reference category {ref_prod.category_id}"
+                    f"for reference category {ref_cat_id}"
                 )
 
         # Target product must belong to one of the supplied categories
@@ -562,6 +578,8 @@ class ComparisonService:
         """Return products eligible for manual confirmation as a match.
 
         Scoped to the given ``target_category_ids`` only.  Enforces:
+        - all supplied ``target_category_ids`` must be valid mapped target
+          categories for the reference product's category (scope guard)
         - already-confirmed-elsewhere targets are excluded
         - rejected exact pairs for this reference product are excluded
           (unless ``include_rejected=True`` is set)
@@ -571,8 +589,8 @@ class ComparisonService:
         reference_product_id:
             The reference-side product the operator is working on.
         target_category_ids:
-            Exhaustive set of allowed target categories.  Only products from
-            these categories are returned.
+            Exhaustive set of allowed target categories.  Each id is validated
+            against the mapped target categories for the reference product.
         search:
             Optional case-insensitive substring filter on product name.
         limit:
@@ -582,6 +600,17 @@ class ComparisonService:
             included in the results.  Globally confirmed targets are always
             excluded regardless of this flag.  Defaults to ``False``.
         """
+        # ── Scope guard: every requested category must be a valid mapped target ──
+        ref_cat_id, valid_mapped_cat_ids = self._resolve_valid_mapped_target_cat_ids(
+            reference_product_id
+        )
+        for cat_id in target_category_ids:
+            if cat_id not in valid_mapped_cat_ids:
+                raise ValueError(
+                    f"Category {cat_id} is not a valid mapped target category "
+                    f"for reference category {ref_cat_id}"
+                )
+
         # Collect candidate products from the specified target categories
         candidates: list[Product] = []
         cat_by_prod_id: dict[int, Category] = {}

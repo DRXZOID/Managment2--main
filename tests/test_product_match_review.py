@@ -274,6 +274,7 @@ class TestEligibleTargetProducts:
             ref_cat = upsert_category(session, store_id=ref_store.id, name="ETPCatA")
             tgt_cat = upsert_category(session, store_id=tgt_store.id, name="ETPCatA")
             other_tgt_cat = upsert_category(session, store_id=tgt_store.id, name="ETPCatB")
+            create_category_mapping(session, reference_category_id=ref_cat.id, target_category_id=tgt_cat.id, match_type="manual")
             ref_p = _prod(session, ref_store.id, ref_cat.id, "ETP Ref Product", "etpr")
             tgt_p1 = _prod(session, tgt_store.id, tgt_cat.id, "ETP Target A", "etpa")
             tgt_p2 = _prod(session, tgt_store.id, other_tgt_cat.id, "ETP Other Cat B", "etpb")
@@ -295,6 +296,7 @@ class TestEligibleTargetProducts:
             tgt_store = get_or_create_store(session, "TgtETP2", is_reference=False)
             ref_cat = upsert_category(session, store_id=ref_store.id, name="ETPCat2")
             tgt_cat = upsert_category(session, store_id=tgt_store.id, name="ETPCat2")
+            create_category_mapping(session, reference_category_id=ref_cat.id, target_category_id=tgt_cat.id, match_type="manual")
             ref_p1 = _prod(session, ref_store.id, ref_cat.id, "ETP Ref P1", "etprp1")
             ref_p2 = _prod(session, ref_store.id, ref_cat.id, "ETP Ref P2", "etprp2")
             tgt_p  = _prod(session, tgt_store.id, tgt_cat.id, "ETP Shared Target", "etpst")
@@ -317,6 +319,7 @@ class TestEligibleTargetProducts:
             tgt_store = get_or_create_store(session, "TgtETP3", is_reference=False)
             ref_cat = upsert_category(session, store_id=ref_store.id, name="ETPCat3")
             tgt_cat = upsert_category(session, store_id=tgt_store.id, name="ETPCat3")
+            create_category_mapping(session, reference_category_id=ref_cat.id, target_category_id=tgt_cat.id, match_type="manual")
             ref_p = _prod(session, ref_store.id, ref_cat.id, "ETP Ref P3", "etprp3")
             tgt_p = _prod(session, tgt_store.id, tgt_cat.id, "ETP Target P3", "etptp3")
             session.flush()
@@ -337,6 +340,7 @@ class TestEligibleTargetProducts:
             tgt_store = get_or_create_store(session, "TgtETP4", is_reference=False)
             ref_cat = upsert_category(session, store_id=ref_store.id, name="ETPCat4")
             tgt_cat = upsert_category(session, store_id=tgt_store.id, name="ETPCat4")
+            create_category_mapping(session, reference_category_id=ref_cat.id, target_category_id=tgt_cat.id, match_type="manual")
             ref_p = _prod(session, ref_store.id, ref_cat.id, "ETP Ref P4", "etprp4")
             _prod(session, tgt_store.id, tgt_cat.id, "Bauer ETP Match", "etpbauer")
             _prod(session, tgt_store.id, tgt_cat.id, "CCM Other Product", "etpccm")
@@ -512,6 +516,7 @@ class TestEligibleTargetProductsEndpoint:
             tgt_store = get_or_create_store(session, "TgtETPE2", is_reference=False)
             ref_cat   = upsert_category(session, store_id=ref_store.id, name="ETPECat2")
             tgt_cat   = upsert_category(session, store_id=tgt_store.id, name="ETPECat2")
+            create_category_mapping(session, reference_category_id=ref_cat.id, target_category_id=tgt_cat.id, match_type="manual")
             session.flush()
             ref_p = _prod(session, ref_store.id, ref_cat.id, "ETPE Ref", "etpere")
             tgt_p = _prod(session, tgt_store.id, tgt_cat.id, "ETPE Tgt", "etpete")
@@ -796,6 +801,7 @@ class TestScopeValidation:
             tgt_store = get_or_create_store(session, "TgtSV3", is_reference=False)
             ref_cat   = upsert_category(session, store_id=ref_store.id, name="SVCat3")
             tgt_cat   = upsert_category(session, store_id=tgt_store.id, name="SVCat3")
+            create_category_mapping(session, reference_category_id=ref_cat.id, target_category_id=tgt_cat.id, match_type="manual")
             session.flush()
             ref_p = _prod(session, ref_store.id, ref_cat.id, "SV Ref P3", "svrp3")
             tgt_p = _prod(session, tgt_store.id, tgt_cat.id, "SV Tgt P3", "svtp3")
@@ -823,6 +829,7 @@ class TestScopeValidation:
             tgt_store = get_or_create_store(session, "TgtSV4", is_reference=False)
             ref_cat   = upsert_category(session, store_id=ref_store.id, name="SVCat4")
             tgt_cat   = upsert_category(session, store_id=tgt_store.id, name="SVCat4")
+            create_category_mapping(session, reference_category_id=ref_cat.id, target_category_id=tgt_cat.id, match_type="manual")
             session.flush()
             ref_p = _prod(session, ref_store.id, ref_cat.id, "SV Ref P4", "svrp4")
             tgt_p = _prod(session, tgt_store.id, tgt_cat.id, "SV Tgt P4", "svtp4")
@@ -851,6 +858,7 @@ class TestScopeValidation:
             tgt_store = get_or_create_store(session, "TgtSV5", is_reference=False)
             ref_cat   = upsert_category(session, store_id=ref_store.id, name="SVCat5")
             tgt_cat   = upsert_category(session, store_id=tgt_store.id, name="SVCat5")
+            create_category_mapping(session, reference_category_id=ref_cat.id, target_category_id=tgt_cat.id, match_type="manual")
             session.flush()
             ref_p1 = _prod(session, ref_store.id, ref_cat.id, "SV Ref P5a", "svrp5a")
             ref_p2 = _prod(session, ref_store.id, ref_cat.id, "SV Ref P5b", "svrp5b")
@@ -872,5 +880,123 @@ class TestScopeValidation:
         assert resp.status_code == 200
         ids = [p["id"] for p in resp.get_json()["products"]]
         assert tgt_p.id not in ids, "Globally confirmed target must always be blocked"
+
+
+# ---------------------------------------------------------------------------
+# 13. Scope enforcement fixup — eligible-target-products scope guard
+# ---------------------------------------------------------------------------
+
+class TestEligibleTargetProductsScope:
+    """Final scope-enforcement fixup:
+    - eligible-target-products rejects off-scope category ids with 400
+    - eligible-target-products accepts valid mapped category ids with 200
+    - match-decision with explicit target_category_ids in scope returns 200
+    - match-decision without target_category_ids still works (backward compat)
+    """
+
+    def test_off_scope_category_returns_400(self, client, db_session_scope):
+        """eligible-target-products must reject category ids not mapped to
+        the reference product's category."""
+        with db_session_scope() as session:
+            ref_store = get_or_create_store(session, "RefSEF1", is_reference=True)
+            tgt_store = get_or_create_store(session, "TgtSEF1", is_reference=False)
+            ref_cat   = upsert_category(session, store_id=ref_store.id, name="SEFCat1")
+            tgt_cat   = upsert_category(session, store_id=tgt_store.id, name="SEFCat1")
+            unrelated = upsert_category(session, store_id=tgt_store.id, name="SEFUnrelated")
+            create_category_mapping(
+                session, reference_category_id=ref_cat.id,
+                target_category_id=tgt_cat.id, match_type="manual",
+            )
+            session.flush()
+            ref_p = _prod(session, ref_store.id, ref_cat.id, "SEF Ref P1", "sefrp1")
+            session.flush()
+
+        # use unrelated category (not mapped to ref_cat) — must be rejected
+        resp = client.get(
+            f"/api/comparison/eligible-target-products"
+            f"?reference_product_id={ref_p.id}"
+            f"&target_category_ids={unrelated.id}"
+        )
+        assert resp.status_code == 400, f"Expected 400, got {resp.status_code}: {resp.get_json()}"
+        assert "error" in resp.get_json()
+
+    def test_valid_mapped_category_returns_200(self, client, db_session_scope):
+        """eligible-target-products must succeed when category is properly mapped."""
+        with db_session_scope() as session:
+            ref_store = get_or_create_store(session, "RefSEF2", is_reference=True)
+            tgt_store = get_or_create_store(session, "TgtSEF2", is_reference=False)
+            ref_cat   = upsert_category(session, store_id=ref_store.id, name="SEFCat2")
+            tgt_cat   = upsert_category(session, store_id=tgt_store.id, name="SEFCat2")
+            create_category_mapping(
+                session, reference_category_id=ref_cat.id,
+                target_category_id=tgt_cat.id, match_type="manual",
+            )
+            session.flush()
+            ref_p = _prod(session, ref_store.id, ref_cat.id, "SEF Ref P2", "sefrp2")
+            tgt_p = _prod(session, tgt_store.id, tgt_cat.id, "SEF Tgt P2", "seftp2")
+            session.flush()
+
+        resp = client.get(
+            f"/api/comparison/eligible-target-products"
+            f"?reference_product_id={ref_p.id}"
+            f"&target_category_ids={tgt_cat.id}"
+        )
+        assert resp.status_code == 200
+        ids = [p["id"] for p in resp.get_json()["products"]]
+        assert tgt_p.id in ids
+
+    def test_match_decision_with_valid_target_category_ids_succeeds(
+        self, client, db_session_scope
+    ):
+        """match-decision with explicit target_category_ids inside mapped scope must succeed."""
+        with db_session_scope() as session:
+            ref_store = get_or_create_store(session, "RefSEF3", is_reference=True)
+            tgt_store = get_or_create_store(session, "TgtSEF3", is_reference=False)
+            ref_cat   = upsert_category(session, store_id=ref_store.id, name="SEFCat3")
+            tgt_cat   = upsert_category(session, store_id=tgt_store.id, name="SEFCat3")
+            create_category_mapping(
+                session, reference_category_id=ref_cat.id,
+                target_category_id=tgt_cat.id, match_type="manual",
+            )
+            session.flush()
+            ref_p = _prod(session, ref_store.id, ref_cat.id, "SEF Ref P3", "sefrp3")
+            tgt_p = _prod(session, tgt_store.id, tgt_cat.id, "SEF Tgt P3", "seftp3")
+            session.flush()
+
+        resp = client.post("/api/comparison/match-decision", json={
+            "reference_product_id": ref_p.id,
+            "target_product_id":    tgt_p.id,
+            "match_status":         "confirmed",
+            "target_category_ids":  [tgt_cat.id],
+        })
+        assert resp.status_code == 200
+        assert resp.get_json()["product_mapping"]["match_status"] == "confirmed"
+
+    def test_match_decision_without_target_category_ids_still_works(
+        self, client, db_session_scope
+    ):
+        """Legacy match-decision without target_category_ids must still be accepted
+        (backward compatibility — old callers that omit the field)."""
+        with db_session_scope() as session:
+            ref_store = get_or_create_store(session, "RefSEF4", is_reference=True)
+            tgt_store = get_or_create_store(session, "TgtSEF4", is_reference=False)
+            ref_cat   = upsert_category(session, store_id=ref_store.id, name="SEFCat4")
+            tgt_cat   = upsert_category(session, store_id=tgt_store.id, name="SEFCat4")
+            create_category_mapping(
+                session, reference_category_id=ref_cat.id,
+                target_category_id=tgt_cat.id, match_type="manual",
+            )
+            session.flush()
+            ref_p = _prod(session, ref_store.id, ref_cat.id, "SEF Ref P4", "sefrp4")
+            tgt_p = _prod(session, tgt_store.id, tgt_cat.id, "SEF Tgt P4", "seftp4")
+            session.flush()
+
+        resp = client.post("/api/comparison/match-decision", json={
+            "reference_product_id": ref_p.id,
+            "target_product_id":    tgt_p.id,
+            "match_status":         "confirmed",
+            # intentionally omitting target_category_ids — legacy path
+        })
+        assert resp.status_code == 200
 
 

@@ -228,7 +228,7 @@ async function runComparison() {
 }
 
 // ── Decision save (confirm / reject) ─────────────────────────────────
-async function saveDecision(refId, tgtId, matchStatus) {
+async function saveDecision(refId, tgtId, matchStatus, extra = {}) {
     return fetchJson('/api/comparison/match-decision', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -236,6 +236,7 @@ async function saveDecision(refId, tgtId, matchStatus) {
             reference_product_id: refId,
             target_product_id: tgtId,
             match_status: matchStatus,
+            ...extra,
         }),
     });
 }
@@ -246,7 +247,9 @@ async function confirmMatch(refId, tgtId, btnEl) {
     btnEl.disabled = true;
     btnEl.textContent = '…';
     try {
-        await saveDecision(refId, tgtId, 'confirmed');
+        await saveDecision(refId, tgtId, 'confirmed', {
+            target_category_ids: Array.from(state.selectedTargetCategoryIds),
+        });
         await refreshComparison();
     } catch (err) {
         btnEl.textContent = 'Помилка';
@@ -442,7 +445,9 @@ async function confirmPickerSelection(refId, btnEl) {
     btnEl.disabled = true;
     btnEl.textContent = '…';
     try {
-        await saveDecision(refId, tgtId, 'confirmed');
+        await saveDecision(refId, tgtId, 'confirmed', {
+            target_category_ids: Array.from(state.selectedTargetCategoryIds),
+        });
         await refreshComparison();
     } catch (err) {
         btnEl.disabled = false;
