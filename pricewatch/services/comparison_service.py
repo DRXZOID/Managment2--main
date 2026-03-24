@@ -504,18 +504,67 @@ class ComparisonService:
     # Eligible target products for manual picker
     # ------------------------------------------------------------------
 
+    def validate_target_scope(
+        self,
+        *,
+        reference_product_id: int,
+        target_product_id: int,
+        target_category_ids: list[int],
+    ) -> None:
+        """Validate that *target_product* belongs to one of the provided
+        *target_category_ids* and that each of those categories is a valid
+        mapped target for the reference product's category.
+
+        Raises ``ValueError`` with a descriptive message on any violation.
+        Called by the HTTP layer before persisting a manual confirmed decision.
+        """
+        from pricewatch.db.models import Product  # local import to avoid circular at module level
+
+        # Load reference product and its category
+        ref_prod = self.session.get(Product, reference_product_id)
+        if ref_prod is None:
+            raise ValueError(f"Reference product {reference_product_id} not found")
+
+        # Load valid mapped target categories for the reference product's category
+        all_mappings = list_mapped_target_categories(
+            self.session, ref_prod.category_id
+        )
+        valid_target_cat_ids = {m.target_category_id for m in all_mappings}
+
+        # Each supplied category must be a valid mapped category
+        for cat_id in target_category_ids:
+            if cat_id not in valid_target_cat_ids:
+                raise ValueError(
+                    f"Category {cat_id} is not a valid mapped target category "
+                    f"for reference category {ref_prod.category_id}"
+                )
+
+        # Target product must belong to one of the supplied categories
+        tgt_prod = self.session.get(Product, target_product_id)
+        if tgt_prod is None:
+            raise ValueError(f"Target product {target_product_id} not found")
+
+        if tgt_prod.category_id not in set(target_category_ids):
+            raise ValueError(
+                f"Target product {target_product_id} belongs to category "
+                f"{tgt_prod.category_id} which is not in the provided "
+                f"target_category_ids {target_category_ids}"
+            )
+
     def get_eligible_target_products(
         self,
         reference_product_id: int,
         target_category_ids: list[int],
         search: str | None = None,
         limit: int = 50,
+        include_rejected: bool = False,
     ) -> list[dict[str, Any]]:
         """Return products eligible for manual confirmation as a match.
 
         Scoped to the given ``target_category_ids`` only.  Enforces:
         - already-confirmed-elsewhere targets are excluded
         - rejected exact pairs for this reference product are excluded
+          (unless ``include_rejected=True`` is set)
 
         Parameters
         ----------
@@ -528,6 +577,10 @@ class ComparisonService:
             Optional case-insensitive substring filter on product name.
         limit:
             Max results.  Defaults to 50.
+        include_rejected:
+            When ``True``, rejected pairs for this reference product are
+            included in the results.  Globally confirmed targets are always
+            excluded regardless of this flag.  Defaults to ``False``.
         """
         # Collect candidate products from the specified target categories
         candidates: list[Product] = []
@@ -554,7 +607,7 @@ class ComparisonService:
 
         result: list[dict[str, Any]] = []
         for p in candidates:
-            if (reference_product_id, p.id) in rejected:
+            if not include_rejected and (reference_product_id, p.id) in rejected:
                 continue
             if p.id in confirmed_elsewhere:
                 continue

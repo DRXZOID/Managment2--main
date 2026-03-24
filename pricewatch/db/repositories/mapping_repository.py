@@ -242,6 +242,30 @@ def get_rejected_pairs_for_refs(
         .all()
     )
     return {(int(pm.reference_product_id), int(pm.target_product_id)) for pm in rows}
+def get_conflicting_confirmed_mapping(
+    session: Session,
+    *,
+    reference_product_id: int,
+    target_product_id: int,
+) -> "ProductMapping | None":
+    """Return a *different* confirmed mapping that already uses ``target_product_id``.
+
+    Used to enforce the invariant: one target product may not be ``confirmed``
+    for more than one reference product at a time.
+
+    Returns ``None`` if no conflict exists (safe to proceed with confirm).
+    """
+    return (
+        session.query(ProductMapping)
+        .filter(
+            ProductMapping.target_product_id == target_product_id,
+            ProductMapping.reference_product_id != reference_product_id,
+            ProductMapping.match_status == "confirmed",
+        )
+        .first()
+    )
+
+
 def get_all_confirmed_target_ids(
     session: Session,
     target_product_ids: list[int],

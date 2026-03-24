@@ -145,7 +145,8 @@ The comparison review model should move to:
   "target_product_id": 456,
   "match_status": "confirmed",
   "confidence": 0.93,
-  "comment": "optional operator note"
+  "comment": "optional operator note",
+  "target_category_ids": [77, 78]
 }
 ```
 
@@ -154,6 +155,24 @@ The comparison review model should move to:
 - `match_status`: `confirmed | rejected`
 - `confidence`: optional numeric value
 - `comment`: optional text value
+- `target_category_ids`: optional list of integers.  When provided for a
+  `confirmed` decision, the server validates that the chosen target product
+  belongs to one of the supplied categories and that each category is a valid
+  mapped target for the reference product's category (scope guard).
+  Old callers that omit this field continue to work (backward-compatible).
+
+### Server-side invariants (enforced since fixup series)
+
+- A target product may not be `confirmed` for more than one reference product
+  simultaneously.  Attempting to do so returns `HTTP 409` with:
+  ```json
+  {
+    "error": "target product is already confirmed for another reference product",
+    "conflicting_reference_product_id": 99
+  }
+  ```
+- When `target_category_ids` is supplied, the target product's actual category
+  must be in that list; otherwise `HTTP 400` is returned.
 
 ### Compatibility strategy
 
@@ -173,29 +192,29 @@ The manual selector requires a scoped searchable list of eligible target product
 - `target_category_ids[]` — required
 - `search` — optional text filter
 - `limit` — optional, default small page size
+- `include_rejected` — optional boolean (`true`/`false`), default `false`.
+  When `true`, previously rejected pairs for this reference product are
+  re-included in results.  Globally confirmed targets are always excluded
+  regardless of this flag.
 
 ### Response shape
 
 ```json
 {
-  "items": [
+  "products": [
     {
       "id": 456,
       "name": "Target product name",
       "store_id": 8,
       "category_id": 77,
-      "category_name": "Category name",
+      "category": { "id": 77, "name": "Category name", "store_name": "Shop" },
       "price": 8999.0,
       "currency": "UAH",
-      "product_url": "https://...",
-      "can_accept": true,
-      "disabled_reason": null
+      "product_url": "https://..."
     }
   ]
 }
 ```
-
-The first iteration may return only eligible items. Returning disabled items with reasons is optional and may be added later if UX needs it.
 
 ## 7.3 Confirmed mappings list endpoint
 

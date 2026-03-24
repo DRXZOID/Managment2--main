@@ -45,11 +45,24 @@ class MatchDecisionRequest(PricewatchBaseModel):
     The ``rejected`` status durably suppresses the exact pair from future
     comparison runs; the decision can be reversed later by sending
     ``confirmed`` for the same pair.
+
+    ``target_category_ids`` is optional.  When provided for a ``confirmed``
+    decision, the server validates that the target product actually belongs
+    to one of the supplied categories (scope guard).  Old callers that omit
+    the field are still accepted (backward-compatible).
     """
     reference_product_id: int = Field(..., gt=0)
     target_product_id: int = Field(..., gt=0)
     match_status: Literal["confirmed", "rejected"]
     confidence: Optional[float] = Field(None, ge=0.0, le=1.0)
     comment: Optional[str] = Field(None, max_length=2000)
+    target_category_ids: Optional[List[int]] = Field(None, min_length=1)
+
+    @field_validator("target_category_ids", mode="before")
+    @classmethod
+    def _coerce_target_cat_ids(cls, v):
+        if v is not None:
+            return [int(i) for i in v]
+        return v
 
 

@@ -14,7 +14,10 @@ import logging
 
 from flask import Blueprint, jsonify
 
-from pricewatch.db.repositories.mapping_repository import upsert_match_decision
+from pricewatch.db.repositories.mapping_repository import (
+    upsert_match_decision,
+    get_conflicting_confirmed_mapping,
+)
 from pricewatch.services.comparison_service import ComparisonService
 from pricewatch.services.gap_service import GapService
 from pricewatch.schemas.validation import parse_request_body
@@ -41,6 +44,27 @@ def register_admin_comparison_gap_routes(bp: Blueprint) -> None:
             return err
         session = get_db_session()()
         try:
+            if payload.match_status == "confirmed":
+                conflict = get_conflicting_confirmed_mapping(
+                    session,
+                    reference_product_id=payload.reference_product_id,
+                    target_product_id=payload.target_product_id,
+                )
+                if conflict is not None:
+                    return jsonify({
+                        "error": "target product is already confirmed for another reference product",
+                        "conflicting_reference_product_id": conflict.reference_product_id,
+                    }), 409
+                # Scope validation — only when caller provides explicit category ids
+                if payload.target_category_ids is not None:
+                    try:
+                        ComparisonService(session).validate_target_scope(
+                            reference_product_id=payload.reference_product_id,
+                            target_product_id=payload.target_product_id,
+                            target_category_ids=payload.target_category_ids,
+                        )
+                    except ValueError as exc:
+                        return jsonify({"error": str(exc)}), 400
             pm = upsert_match_decision(
                 session,
                 reference_product_id=payload.reference_product_id,
@@ -69,11 +93,23 @@ def register_admin_comparison_gap_routes(bp: Blueprint) -> None:
             return err
         session = get_db_session()()
         try:
+            effective_status = payload.match_status or "confirmed"
+            if effective_status == "confirmed":
+                conflict = get_conflicting_confirmed_mapping(
+                    session,
+                    reference_product_id=payload.reference_product_id,
+                    target_product_id=payload.target_product_id,
+                )
+                if conflict is not None:
+                    return jsonify({
+                        "error": "target product is already confirmed for another reference product",
+                        "conflicting_reference_product_id": conflict.reference_product_id,
+                    }), 409
             pm = upsert_match_decision(
                 session,
                 reference_product_id=payload.reference_product_id,
                 target_product_id=payload.target_product_id,
-                match_status=payload.match_status or "confirmed",
+                match_status=effective_status,
                 confidence=payload.confidence,
                 comment=payload.comment,
             )

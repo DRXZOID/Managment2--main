@@ -12,6 +12,8 @@ const state = {
 // ── DOM refs ──────────────────────────────────────────────────────────
 const $refStoreFilter  = document.getElementById('refStoreFilter');
 const $tgtStoreFilter  = document.getElementById('tgtStoreFilter');
+const $refCatFilter    = document.getElementById('refCatFilter');
+const $tgtCatFilter    = document.getElementById('tgtCatFilter');
 const $statusFilter    = document.getElementById('statusFilter');
 const $searchFilter    = document.getElementById('searchFilter');
 const $loadBtn         = document.getElementById('loadMatchesBtn');
@@ -62,6 +64,17 @@ function fmtDate(iso) {
 }
 
 // ── Load stores into filter selects ──────────────────────────────────
+async function loadCategoriesForSelect(storeId, selectEl) {
+    selectEl.innerHTML = '<option value="">— всі —</option>';
+    if (!storeId) return;
+    try {
+        const data = await fetchJson(`/api/stores/${storeId}/categories`);
+        const cats = data.categories || [];
+        selectEl.innerHTML = '<option value="">— всі —</option>' +
+            cats.map(c => `<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
+    } catch (_) { /* silently ignore */ }
+}
+
 async function loadStores() {
     try {
         const data = await fetchJson('/api/stores');
@@ -75,6 +88,15 @@ async function loadStores() {
             refStores.map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`).join('');
         $tgtStoreFilter.innerHTML = '<option value="">— всі —</option>' +
             tgtStores.map(s => `<option value="${s.id}">${escHtml(s.name)}</option>`).join('');
+
+        $refStoreFilter.onchange = () => {
+            const sid = Number($refStoreFilter.value) || null;
+            loadCategoriesForSelect(sid, $refCatFilter);
+        };
+        $tgtStoreFilter.onchange = () => {
+            const sid = Number($tgtStoreFilter.value) || null;
+            loadCategoriesForSelect(sid, $tgtCatFilter);
+        };
     } catch (err) {
         setStatus('Помилка завантаження магазинів: ' + err.message, 'error');
     }
@@ -87,16 +109,20 @@ async function loadMappings() {
     $summaryRow.classList.add('hidden');
 
     const params = new URLSearchParams();
-    const refId  = Number($refStoreFilter.value) || null;
-    const tgtId  = Number($tgtStoreFilter.value) || null;
-    const status = $statusFilter.value;
-    const search = $searchFilter.value.trim();
+    const refId    = Number($refStoreFilter.value) || null;
+    const tgtId    = Number($tgtStoreFilter.value) || null;
+    const refCatId = Number($refCatFilter.value)   || null;
+    const tgtCatId = Number($tgtCatFilter.value)   || null;
+    const status   = $statusFilter.value;
+    const search   = $searchFilter.value.trim();
 
-    if (refId)   params.set('reference_store_id', refId);
-    if (tgtId)   params.set('target_store_id', tgtId);
-    if (status)  params.set('status', status);
-    else         params.set('status', '');
-    if (search)  params.set('search', search);
+    if (refId)    params.set('reference_store_id', refId);
+    if (tgtId)    params.set('target_store_id', tgtId);
+    if (refCatId) params.set('reference_category_id', refCatId);
+    if (tgtCatId) params.set('target_category_id', tgtCatId);
+    if (status)   params.set('status', status);
+    else          params.set('status', '');
+    if (search)   params.set('search', search);
 
     setStatus('Завантаження…');
     try {

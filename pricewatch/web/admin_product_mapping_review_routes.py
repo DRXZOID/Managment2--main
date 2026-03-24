@@ -94,6 +94,7 @@ def register_admin_product_mapping_review_routes(bp: Blueprint) -> None:
         search = request.args.get("search") or None
         limit_raw = _int_or_none("limit")
         limit = max(1, min(limit_raw or 50, 200))
+        include_rejected = request.args.get("include_rejected", "false").lower() == "true"
         session = get_db_session()()
         try:
             svc = ComparisonService(session)
@@ -102,6 +103,7 @@ def register_admin_product_mapping_review_routes(bp: Blueprint) -> None:
                 target_category_ids=target_category_ids,
                 search=search,
                 limit=limit,
+                include_rejected=include_rejected,
             )
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400

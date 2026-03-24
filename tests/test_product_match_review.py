@@ -27,6 +27,7 @@ from pricewatch.db.repositories.mapping_repository import (
     get_confirmed_target_ids_for_refs,
     get_all_confirmed_target_ids,
     list_product_mappings_filtered,
+    get_conflicting_confirmed_mapping,
 )
 from pricewatch.services.comparison_service import ComparisonService
 
@@ -569,4 +570,307 @@ class TestNewRoutesRegistered:
             register_admin_product_mapping_review_routes,
         )
         assert callable(register_admin_product_mapping_review_routes)
+
+
+# ---------------------------------------------------------------------------
+# 11. Commit 1 — Confirmed target uniqueness (server-side invariant)
+# ---------------------------------------------------------------------------
+
+class TestConfirmedTargetUniqueness:
+    """Gap A: server-side enforcement that one target cannot be confirmed
+    for two different reference products simultaneously."""
+
+    def test_duplicate_confirmed_target_fails_409(self, client, db_session_scope):
+        """Confirming the same target for a second reference must fail with 409."""
+        with db_session_scope() as session:
+            ref_store = get_or_create_store(session, "RefCTU1", is_reference=True)
+            tgt_store = get_or_create_store(session, "TgtCTU1", is_reference=False)
+            ref_cat   = upsert_category(session, store_id=ref_store.id, name="CTUCat1")
+            tgt_cat   = upsert_category(session, store_id=tgt_store.id, name="CTUCat1")
+            session.flush()
+            ref_a = _prod(session, ref_store.id, ref_cat.id, "CTU Ref A", "cturefa")
+            ref_b = _prod(session, ref_store.id, ref_cat.id, "CTU Ref B", "cturefb")
+            tgt_x = _prod(session, tgt_store.id, tgt_cat.id, "CTU Tgt X", "ctutgtx")
+            session.flush()
+
+        # First confirm: ref_a + tgt_x → should succeed
+        resp = client.post("/api/comparison/match-decision", json={
+            "reference_product_id": ref_a.id,
+            "target_product_id":    tgt_x.id,
+            "match_status": "confirmed",
+        })
+        assert resp.status_code == 200
+
+        # Second confirm: ref_b + tgt_x → should fail 409
+        resp2 = client.post("/api/comparison/match-decision", json={
+            "reference_product_id": ref_b.id,
+            "target_product_id":    tgt_x.id,
+            "match_status": "confirmed",
+        })
+        assert resp2.status_code == 409
+        body = resp2.get_json()
+        assert "error" in body
+        assert "already confirmed" in body["error"].lower()
+        assert body.get("conflicting_reference_product_id") == ref_a.id
+
+    def test_same_pair_override_cycle_succeeds(self, client, db_session_scope):
+        """confirmed → rejected → confirmed for the SAME pair must always succeed."""
+        with db_session_scope() as session:
+            ref_store = get_or_create_store(session, "RefCTU2", is_reference=True)
+            tgt_store = get_or_create_store(session, "TgtCTU2", is_reference=False)
+            ref_cat   = upsert_category(session, store_id=ref_store.id, name="CTUCat2")
+            tgt_cat   = upsert_category(session, store_id=tgt_store.id, name="CTUCat2")
+            session.flush()
+            ref_p = _prod(session, ref_store.id, ref_cat.id, "CTU Cycle Ref", "ctucycleref")
+            tgt_p = _prod(session, tgt_store.id, tgt_cat.id, "CTU Cycle Tgt", "ctucycletgt")
+            session.flush()
+
+        r1 = client.post("/api/comparison/match-decision", json={
+            "reference_product_id": ref_p.id, "target_product_id": tgt_p.id, "match_status": "confirmed",
+        })
+        assert r1.status_code == 200
+
+        r2 = client.post("/api/comparison/match-decision", json={
+            "reference_product_id": ref_p.id, "target_product_id": tgt_p.id, "match_status": "rejected",
+        })
+        assert r2.status_code == 200
+
+        r3 = client.post("/api/comparison/match-decision", json={
+            "reference_product_id": ref_p.id, "target_product_id": tgt_p.id, "match_status": "confirmed",
+        })
+        assert r3.status_code == 200
+
+    def test_rejected_different_ref_does_not_conflict(self, client, db_session_scope):
+        """Rejected status for ref_b + tgt_x must be allowed even when ref_a + tgt_x is confirmed."""
+        with db_session_scope() as session:
+            ref_store = get_or_create_store(session, "RefCTU3", is_reference=True)
+            tgt_store = get_or_create_store(session, "TgtCTU3", is_reference=False)
+            ref_cat   = upsert_category(session, store_id=ref_store.id, name="CTUCat3")
+            tgt_cat   = upsert_category(session, store_id=tgt_store.id, name="CTUCat3")
+            session.flush()
+            ref_a = _prod(session, ref_store.id, ref_cat.id, "CTU RefA2", "cturefa2")
+            ref_b = _prod(session, ref_store.id, ref_cat.id, "CTU RefB2", "cturefb2")
+            tgt_x = _prod(session, tgt_store.id, tgt_cat.id, "CTU TgtX2", "ctutgtx2")
+            session.flush()
+
+        # ref_a confirms tgt_x
+        client.post("/api/comparison/match-decision", json={
+            "reference_product_id": ref_a.id, "target_product_id": tgt_x.id, "match_status": "confirmed",
+        })
+
+        # ref_b REJECTS tgt_x — must succeed (not a conflict)
+        resp = client.post("/api/comparison/match-decision", json={
+            "reference_product_id": ref_b.id,
+            "target_product_id":    tgt_x.id,
+            "match_status": "rejected",
+        })
+        assert resp.status_code == 200
+
+    def test_shim_also_enforces_uniqueness(self, client, db_session_scope):
+        """The /confirm-match shim must also enforce the uniqueness invariant."""
+        with db_session_scope() as session:
+            ref_store = get_or_create_store(session, "RefCTU4", is_reference=True)
+            tgt_store = get_or_create_store(session, "TgtCTU4", is_reference=False)
+            ref_cat   = upsert_category(session, store_id=ref_store.id, name="CTUCat4")
+            tgt_cat   = upsert_category(session, store_id=tgt_store.id, name="CTUCat4")
+            session.flush()
+            ref_a = _prod(session, ref_store.id, ref_cat.id, "CTU Shim RefA", "ctushimrefa")
+            ref_b = _prod(session, ref_store.id, ref_cat.id, "CTU Shim RefB", "ctushimrefb")
+            tgt_x = _prod(session, tgt_store.id, tgt_cat.id, "CTU Shim TgtX", "ctushimtgtx")
+            session.flush()
+
+        # First confirm via shim succeeds
+        r1 = client.post("/api/comparison/confirm-match", json={
+            "reference_product_id": ref_a.id, "target_product_id": tgt_x.id,
+        })
+        assert r1.status_code == 200
+
+        # Second confirm via shim for different ref must fail
+        r2 = client.post("/api/comparison/confirm-match", json={
+            "reference_product_id": ref_b.id, "target_product_id": tgt_x.id,
+        })
+        assert r2.status_code == 409
+
+    def test_get_conflicting_confirmed_mapping_repository(self):
+        """Unit test the repository helper directly."""
+        with _session_scope() as session:
+            ref_store, tgt_store, ref_cat, tgt_cat = _setup(session)
+            ref_a = _prod(session, ref_store.id, ref_cat.id, "CTU Repo RefA", "cturepoa")
+            ref_b = _prod(session, ref_store.id, ref_cat.id, "CTU Repo RefB", "cturepo_b")
+            tgt_x = _prod(session, tgt_store.id, tgt_cat.id, "CTU Repo TgtX", "cturepox")
+            session.flush()
+
+            # No conflict yet
+            assert get_conflicting_confirmed_mapping(
+                session, reference_product_id=ref_b.id, target_product_id=tgt_x.id
+            ) is None
+
+            # Confirm ref_a + tgt_x
+            upsert_match_decision(
+                session, reference_product_id=ref_a.id, target_product_id=tgt_x.id,
+                match_status="confirmed",
+            )
+
+            # Now there IS a conflict when checking from ref_b perspective
+            conflict = get_conflicting_confirmed_mapping(
+                session, reference_product_id=ref_b.id, target_product_id=tgt_x.id
+            )
+            assert conflict is not None
+            assert conflict.reference_product_id == ref_a.id
+
+            # No self-conflict: same pair returns None
+            no_conflict = get_conflicting_confirmed_mapping(
+                session, reference_product_id=ref_a.id, target_product_id=tgt_x.id
+            )
+            assert no_conflict is None
+
+
+# ---------------------------------------------------------------------------
+# 12. Commit 2 — Server-side scope validation for manual match decisions
+# ---------------------------------------------------------------------------
+
+class TestScopeValidation:
+    """Gap B: target product must belong to a category that is mapped
+    to the reference product's category."""
+
+    def test_match_decision_rejects_off_scope_target_with_categories_provided(
+        self, client, db_session_scope
+    ):
+        """POST match-decision with target_category_ids that don't include
+        the actual target product's category must return 400."""
+        with db_session_scope() as session:
+            ref_store = get_or_create_store(session, "RefSV1", is_reference=True)
+            tgt_store = get_or_create_store(session, "TgtSV1", is_reference=False)
+            ref_cat   = upsert_category(session, store_id=ref_store.id, name="SVCat1")
+            tgt_cat   = upsert_category(session, store_id=tgt_store.id, name="SVCat1")
+            other_cat = upsert_category(session, store_id=tgt_store.id, name="SVOtherCat")
+            create_category_mapping(
+                session, reference_category_id=ref_cat.id,
+                target_category_id=tgt_cat.id, match_type="manual",
+            )
+            session.flush()
+            ref_p = _prod(session, ref_store.id, ref_cat.id, "SV Ref P1", "svrp1")
+            # tgt_p is in tgt_cat, but we'll claim it's in other_cat via the request
+            tgt_p = _prod(session, tgt_store.id, tgt_cat.id, "SV Tgt P1", "svtp1")
+            session.flush()
+
+        # provide target_category_ids that don't include tgt_cat (where tgt_p actually lives)
+        resp = client.post("/api/comparison/match-decision", json={
+            "reference_product_id": ref_p.id,
+            "target_product_id":    tgt_p.id,
+            "match_status":         "confirmed",
+            "target_category_ids":  [other_cat.id],
+        })
+        assert resp.status_code == 400, resp.get_json()
+
+    def test_match_decision_without_target_category_ids_still_accepted(
+        self, client, db_session_scope
+    ):
+        """Old payload without target_category_ids must still work (backward compat)."""
+        with db_session_scope() as session:
+            ref_store = get_or_create_store(session, "RefSV2", is_reference=True)
+            tgt_store = get_or_create_store(session, "TgtSV2", is_reference=False)
+            ref_cat   = upsert_category(session, store_id=ref_store.id, name="SVCat2")
+            tgt_cat   = upsert_category(session, store_id=tgt_store.id, name="SVCat2")
+            create_category_mapping(
+                session, reference_category_id=ref_cat.id,
+                target_category_id=tgt_cat.id, match_type="manual",
+            )
+            session.flush()
+            ref_p = _prod(session, ref_store.id, ref_cat.id, "SV Ref P2", "svrp2")
+            tgt_p = _prod(session, tgt_store.id, tgt_cat.id, "SV Tgt P2", "svtp2")
+            session.flush()
+
+        resp = client.post("/api/comparison/match-decision", json={
+            "reference_product_id": ref_p.id,
+            "target_product_id":    tgt_p.id,
+            "match_status": "confirmed",
+            # no target_category_ids — legacy path
+        })
+        assert resp.status_code == 200
+
+    def test_eligible_products_include_rejected_param(self, client, db_session_scope):
+        """include_rejected=true must surface previously rejected pair."""
+        with db_session_scope() as session:
+            ref_store = get_or_create_store(session, "RefSV3", is_reference=True)
+            tgt_store = get_or_create_store(session, "TgtSV3", is_reference=False)
+            ref_cat   = upsert_category(session, store_id=ref_store.id, name="SVCat3")
+            tgt_cat   = upsert_category(session, store_id=tgt_store.id, name="SVCat3")
+            session.flush()
+            ref_p = _prod(session, ref_store.id, ref_cat.id, "SV Ref P3", "svrp3")
+            tgt_p = _prod(session, tgt_store.id, tgt_cat.id, "SV Tgt P3", "svtp3")
+            session.flush()
+            upsert_match_decision(
+                session, reference_product_id=ref_p.id,
+                target_product_id=tgt_p.id, match_status="rejected",
+            )
+
+        url = (
+            f"/api/comparison/eligible-target-products"
+            f"?reference_product_id={ref_p.id}"
+            f"&target_category_ids={tgt_cat.id}"
+            f"&include_rejected=true"
+        )
+        resp = client.get(url)
+        assert resp.status_code == 200
+        ids = [p["id"] for p in resp.get_json()["products"]]
+        assert tgt_p.id in ids, "Rejected product should be surfaced when include_rejected=true"
+
+    def test_eligible_products_rejected_hidden_by_default(self, client, db_session_scope):
+        """Rejected pair must NOT appear when include_rejected is omitted."""
+        with db_session_scope() as session:
+            ref_store = get_or_create_store(session, "RefSV4", is_reference=True)
+            tgt_store = get_or_create_store(session, "TgtSV4", is_reference=False)
+            ref_cat   = upsert_category(session, store_id=ref_store.id, name="SVCat4")
+            tgt_cat   = upsert_category(session, store_id=tgt_store.id, name="SVCat4")
+            session.flush()
+            ref_p = _prod(session, ref_store.id, ref_cat.id, "SV Ref P4", "svrp4")
+            tgt_p = _prod(session, tgt_store.id, tgt_cat.id, "SV Tgt P4", "svtp4")
+            session.flush()
+            upsert_match_decision(
+                session, reference_product_id=ref_p.id,
+                target_product_id=tgt_p.id, match_status="rejected",
+            )
+
+        url = (
+            f"/api/comparison/eligible-target-products"
+            f"?reference_product_id={ref_p.id}"
+            f"&target_category_ids={tgt_cat.id}"
+        )
+        resp = client.get(url)
+        assert resp.status_code == 200
+        ids = [p["id"] for p in resp.get_json()["products"]]
+        assert tgt_p.id not in ids, "Rejected product must be hidden by default"
+
+    def test_confirmed_elsewhere_still_blocked_even_with_include_rejected(
+        self, client, db_session_scope
+    ):
+        """Even with include_rejected=true, a globally-confirmed target must NOT appear."""
+        with db_session_scope() as session:
+            ref_store = get_or_create_store(session, "RefSV5", is_reference=True)
+            tgt_store = get_or_create_store(session, "TgtSV5", is_reference=False)
+            ref_cat   = upsert_category(session, store_id=ref_store.id, name="SVCat5")
+            tgt_cat   = upsert_category(session, store_id=tgt_store.id, name="SVCat5")
+            session.flush()
+            ref_p1 = _prod(session, ref_store.id, ref_cat.id, "SV Ref P5a", "svrp5a")
+            ref_p2 = _prod(session, ref_store.id, ref_cat.id, "SV Ref P5b", "svrp5b")
+            tgt_p  = _prod(session, tgt_store.id, tgt_cat.id, "SV Tgt P5",  "svtp5")
+            session.flush()
+            # ref_p2 already confirmed tgt_p
+            upsert_match_decision(
+                session, reference_product_id=ref_p2.id,
+                target_product_id=tgt_p.id, match_status="confirmed",
+            )
+
+        url = (
+            f"/api/comparison/eligible-target-products"
+            f"?reference_product_id={ref_p1.id}"
+            f"&target_category_ids={tgt_cat.id}"
+            f"&include_rejected=true"
+        )
+        resp = client.get(url)
+        assert resp.status_code == 200
+        ids = [p["id"] for p in resp.get_json()["products"]]
+        assert tgt_p.id not in ids, "Globally confirmed target must always be blocked"
+
 

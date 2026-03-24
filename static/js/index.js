@@ -211,8 +211,11 @@ async function runComparison() {
             body: JSON.stringify(body),
         });
         const s = data.summary || {};
+        const persistedCount = (data.confirmed_matches || []).filter(m => m.is_confirmed === true).length;
+        const autoCount      = (data.confirmed_matches || []).filter(m => m.is_confirmed === false).length;
         statusEl.textContent =
-            `Підтверджено: ${s.confirmed_matches ?? 0}  •  ` +
+            `Підтверджено: ${persistedCount}  •  ` +
+            `Авто-пропозиції: ${autoCount}  •  ` +
             `Кандидатів: ${s.candidate_groups ?? 0}  •  ` +
             `Тільки в референсі: ${s.reference_only ?? 0}  •  ` +
             `Тільки в цільовому: ${s.target_only ?? 0}`;
@@ -280,27 +283,42 @@ async function refreshComparison() {
     await runComparison();
 }
 
-// ── Render: confirmed matches ─────────────────────────────────────────
-function renderConfirmedMatches(container, matches) {
+// ── Render: persisted confirmed matches ──────────────────────────────
+function renderPersistedConfirmed(container, matches) {
+    if (!matches.length) return;
     const sec = document.createElement('div');
     sec.className = 'comp-section';
     sec.innerHTML = `<h3>✅ Підтверджені збіги <span class="badge badge-confirmed">${matches.length}</span></h3>`;
-    if (!matches.length) {
-        sec.innerHTML += '<p class="muted">Немає підтверджених збігів.</p>';
-        container.appendChild(sec); return;
-    }
     const rows = matches.map(m => {
         const ref = m.reference_product || {}, tgt = m.target_product || {};
-        const isConfirmed = m.is_confirmed === true;
-        const srcBadge = isConfirmed
-            ? `<span class="badge badge-confirmed">💾 підтверджено</span>`
-            : `<span class="badge badge-heuristic">🔍 авто</span>`;
-        const confirmBtn = !isConfirmed
-            ? `<button class="btn btn-sm" onclick="confirmMatch(${ref.id},${tgt.id},this)">✔ Підтвердити</button>`
-            : '';
         const rejectBtn = `<button class="btn btn-sm btn-reject" onclick="rejectMatch(${ref.id},${tgt.id},this)">✖ Відхилити</button>`;
         return `<tr>
-            <td>${productLink(ref)} ${srcBadge}</td>
+            <td>${productLink(ref)} <span class="badge badge-confirmed">💾 підтверджено</span></td>
+            <td>${priceStr(ref)}</td>
+            <td>${productLink(tgt)} ${catBadge(m.target_category)}</td>
+            <td>${priceStr(tgt)}</td>
+            <td>${scorePillHtml(m.score_percent, m.score_details)}</td>
+            <td class="action-cell">${rejectBtn}</td>
+        </tr>`;
+    }).join('');
+    sec.innerHTML += `<div class="table-wrapper"><table>
+        <thead><tr><th>Референс</th><th>Ціна</th><th>Цільовий</th><th>Ціна</th><th>Score</th><th></th></tr></thead>
+        <tbody>${rows}</tbody></table></div>`;
+    container.appendChild(sec);
+}
+
+// ── Render: auto suggestions (high-confidence, not yet confirmed) ─────
+function renderAutoSuggestions(container, matches) {
+    if (!matches.length) return;
+    const sec = document.createElement('div');
+    sec.className = 'comp-section';
+    sec.innerHTML = `<h3>🔍 Авто-пропозиції (висока впевненість) <span class="badge badge-heuristic">${matches.length}</span></h3>`;
+    const rows = matches.map(m => {
+        const ref = m.reference_product || {}, tgt = m.target_product || {};
+        const confirmBtn = `<button class="btn btn-sm" onclick="confirmMatch(${ref.id},${tgt.id},this)">✔ Підтвердити</button>`;
+        const rejectBtn  = `<button class="btn btn-sm btn-reject" onclick="rejectMatch(${ref.id},${tgt.id},this)">✖ Відхилити</button>`;
+        return `<tr>
+            <td>${productLink(ref)} <span class="badge badge-heuristic">🔍 авто</span></td>
             <td>${priceStr(ref)}</td>
             <td>${productLink(tgt)} ${catBadge(m.target_category)}</td>
             <td>${priceStr(tgt)}</td>
@@ -346,9 +364,14 @@ function renderCandidateGroups(container, groups) {
             <details class="picker-details">
                 <summary class="picker-summary">🔍 Вибрати вручну…</summary>
                 <div class="picker-body">
+                    <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--muted);margin-bottom:6px;">
+                        <input type="checkbox" class="picker-include-rejected"
+                            onchange="toggleIncludeRejected(${ref.id}, this)"/>
+                        Показати відхилені
+                    </label>
                     <input type="text" class="picker-search" placeholder="Пошук за назвою…"
                         oninput="loadPickerOptions(${ref.id}, this)"
-                        data-ref-id="${ref.id}"/>
+                        data-ref-id="${ref.id}" data-include-rejected="false"/>
                     <select class="picker-select" size="5" id="pickerSelect_${ref.id}">
                         <option value="" disabled selected>— введіть запит —</option>
                     </select>
@@ -369,6 +392,15 @@ function renderCandidateGroups(container, groups) {
 // ── Manual picker logic ───────────────────────────────────────────────
 let _pickerDebounce = null;
 
+function toggleIncludeRejected(refId, checkboxEl) {
+    const inputEl = checkboxEl.closest('.picker-body')?.querySelector('.picker-search');
+    if (inputEl) {
+        inputEl.dataset.includeRejected = checkboxEl.checked ? 'true' : 'false';
+        // Re-trigger search if there's already a query
+        if ((inputEl.value || '').trim().length >= 2) loadPickerOptions(refId, inputEl);
+    }
+}
+
 async function loadPickerOptions(refId, inputEl) {
     clearTimeout(_pickerDebounce);
     _pickerDebounce = setTimeout(async () => {
@@ -383,16 +415,19 @@ async function loadPickerOptions(refId, inputEl) {
         try {
             const ids = Array.from(state.selectedTargetCategoryIds);
             const qs = ids.map(id => `target_category_ids=${id}`).join('&');
-            const url = `/api/comparison/eligible-target-products?reference_product_id=${refId}&${qs}&search=${encodeURIComponent(search)}&limit=30`;
+            const includeRej = inputEl.dataset.includeRejected === 'true' ? '&include_rejected=true' : '';
+            const url = `/api/comparison/eligible-target-products?reference_product_id=${refId}&${qs}&search=${encodeURIComponent(search)}&limit=30${includeRej}`;
             const data = await fetchJson(url);
             const products = data.products || [];
             if (!products.length) {
                 selectEl.innerHTML = '<option value="" disabled>— нічого не знайдено —</option>';
                 return;
             }
-            selectEl.innerHTML = products.map(p =>
-                `<option value="${p.id}">${escHtml(p.name)} — ${p.price != null ? p.price + ' ' + (p.currency || '') : '?'}</option>`
-            ).join('');
+            selectEl.innerHTML = products.map(p => {
+                const price = p.price != null ? `${p.price} ${p.currency || ''}`.trim() : '?';
+                const catName = p.category?.name ? ` — ${escHtml(p.category.name)}` : '';
+                return `<option value="${p.id}">${escHtml(p.name)} — ${price}${catName}</option>`;
+            }).join('');
         } catch (err) {
             selectEl.innerHTML = `<option disabled>Помилка: ${escHtml(err.message)}</option>`;
         }
@@ -429,12 +464,41 @@ function renderOnlySideBySide(container, refOnly, tgtOnly) {
     refDet.innerHTML = `<summary>📋 Тільки в референсі <span class="badge badge-ref">${refOnly.length}</span></summary>`;
     const refBody = document.createElement('div');
     refBody.className = 'details-body';
-    refBody.innerHTML = refOnly.length
-        ? `<table><thead><tr><th>Назва</th><th>Ціна</th></tr></thead><tbody>${refOnly.map(item => {
+    if (!refOnly.length) {
+        refBody.innerHTML = '<p class="muted">Немає товарів тільки в референсі.</p>';
+    } else {
+        // Render each unmatched reference product as an interactive card with manual picker
+        refOnly.forEach(item => {
             const p = item.reference_product || {};
-            return `<tr><td>${productLink(p)}</td><td>${priceStr(p)}</td></tr>`;
-          }).join('')}</tbody></table>`
-        : '<p class="muted">Немає товарів тільки в референсі.</p>';
+            const card = document.createElement('div');
+            card.className = 'candidate-card';
+            const pickerId = `picker_ref_${p.id}`;
+            const manualPickerHtml = `
+            <div class="manual-picker" id="${pickerId}">
+                <details class="picker-details">
+                    <summary class="picker-summary">🔍 Вибрати вручну…</summary>
+                    <div class="picker-body">
+                        <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--muted);margin-bottom:6px;">
+                            <input type="checkbox" class="picker-include-rejected"
+                                onchange="toggleIncludeRejected(${p.id}, this)"/>
+                            Показати відхилені
+                        </label>
+                        <input type="text" class="picker-search" placeholder="Пошук за назвою…"
+                            oninput="loadPickerOptions(${p.id}, this)"
+                            data-ref-id="${p.id}" data-include-rejected="false"/>
+                        <select class="picker-select" size="5" id="pickerSelect_${p.id}">
+                            <option value="" disabled selected>— введіть запит —</option>
+                        </select>
+                        <button class="btn btn-sm" style="margin-top:6px;"
+                            onclick="confirmPickerSelection(${p.id}, this)">✔ Підтвердити вибір</button>
+                    </div>
+                </details>
+            </div>`;
+            card.innerHTML = `<div class="ref-row">${productLink(p)}<span class="muted"> — ${priceStr(p)}</span></div>
+            ${manualPickerHtml}`;
+            refBody.appendChild(card);
+        });
+    }
     refDet.appendChild(refBody);
 
     const tgtDet = document.createElement('details');
@@ -457,7 +521,11 @@ function renderOnlySideBySide(container, refOnly, tgtOnly) {
 
 function renderComparisonResults(container, data) {
     container.innerHTML = '';
-    renderConfirmedMatches(container, data.confirmed_matches || []);
+    const allConfirmed = data.confirmed_matches || [];
+    const persisted = allConfirmed.filter(m => m.is_confirmed === true);
+    const autoSugg  = allConfirmed.filter(m => m.is_confirmed === false);
+    renderPersistedConfirmed(container, persisted);
+    renderAutoSuggestions(container, autoSugg);
     renderCandidateGroups(container, data.candidate_groups || []);
     renderOnlySideBySide(container, data.reference_only || [], data.target_only || []);
 }
@@ -468,6 +536,7 @@ window.confirmMatch        = confirmMatch;
 window.rejectMatch         = rejectMatch;
 window.loadPickerOptions   = loadPickerOptions;
 window.confirmPickerSelection = confirmPickerSelection;
+window.toggleIncludeRejected  = toggleIncludeRejected;
 
 document.addEventListener('DOMContentLoaded', loadStores);
 
