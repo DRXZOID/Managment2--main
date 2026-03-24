@@ -6,6 +6,27 @@ This document describes operational endpoints used by `/service` and administrat
 
 These endpoints are part of supported operations, but they are not the same as the primary user-facing comparison contract.
 
+## Product-match review endpoints
+
+These endpoints implement the explicit operator review workflow for product pairs (ADR-0012).
+
+### `POST /api/comparison/match-decision` *(primary)*
+Persists a `confirmed` or `rejected` decision for an exact reference-target pair. Full contract in [`api/db_first.md`](db_first.md).
+
+### `POST /api/comparison/confirm-match` *(backward-compat shim)*
+Legacy endpoint internally delegating to `match-decision` with `match_status="confirmed"`. Kept for backward compatibility.
+
+### `GET /api/comparison/eligible-target-products`
+Returns the scoped list of eligible target products for manual selection during comparison review. Full contract in [`api/db_first.md`](db_first.md).
+
+### `GET /api/product-mappings`
+Lists persisted product mappings with filters; powers the `/matches` review page. Full contract in [`api/db_first.md`](db_first.md).
+
+### `DELETE /api/product-mappings/<mapping_id>`
+Hard-deletes a persisted mapping row.
+
+---
+
 ## Store and sync endpoints
 
 ### `POST /api/admin/stores/sync`

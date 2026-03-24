@@ -209,10 +209,8 @@ async function runComparison() {
             body: JSON.stringify(body),
         });
         const s = data.summary || {};
-        const persistedCount = (data.confirmed_matches || []).filter(m => m.is_confirmed === true).length;
-        const autoCount      = (data.confirmed_matches || []).filter(m => m.is_confirmed === false).length;
+        const autoCount = (data.confirmed_matches || []).filter(m => m.is_confirmed === false).length;
         statusEl.textContent =
-            `Підтверджено: ${persistedCount}  •  ` +
             `Авто-пропозиції: ${autoCount}  •  ` +
             `Кандидатів: ${s.candidate_groups ?? 0}  •  ` +
             `Тільки в референсі: ${s.reference_only ?? 0}  •  ` +
@@ -284,29 +282,6 @@ async function refreshComparison() {
     await runComparison();
 }
 
-// ── Render: persisted confirmed matches ──────────────────────────────
-function renderPersistedConfirmed(container, matches) {
-    if (!matches.length) return;
-    const sec = document.createElement('div');
-    sec.className = 'comp-section';
-    sec.innerHTML = `<h3>✅ Підтверджені збіги <span class="badge badge-confirmed">${matches.length}</span></h3>`;
-    const rows = matches.map(m => {
-        const ref = m.reference_product || {}, tgt = m.target_product || {};
-        const rejectBtn = `<button class="btn btn-sm btn-reject" onclick="rejectMatch(${ref.id},${tgt.id},this)">✖ Відхилити</button>`;
-        return `<tr>
-            <td>${productLink(ref)} <span class="badge badge-confirmed">💾 підтверджено</span></td>
-            <td>${priceStr(ref)}</td>
-            <td>${productLink(tgt)} ${catBadge(m.target_category)}</td>
-            <td>${priceStr(tgt)}</td>
-            <td>${scorePillHtml(m.score_percent, m.score_details)}</td>
-            <td class="action-cell">${rejectBtn}</td>
-        </tr>`;
-    }).join('');
-    sec.innerHTML += `<div class="table-wrapper"><table>
-        <thead><tr><th>Референс</th><th>Ціна</th><th>Цільовий</th><th>Ціна</th><th>Score</th><th></th></tr></thead>
-        <tbody>${rows}</tbody></table></div>`;
-    container.appendChild(sec);
-}
 
 // ── Render: auto suggestions (high-confidence, not yet confirmed) ─────
 function renderAutoSuggestions(container, matches) {
@@ -525,9 +500,9 @@ function renderOnlySideBySide(container, refOnly, tgtOnly) {
 function renderComparisonResults(container, data) {
     container.innerHTML = '';
     const allConfirmed = data.confirmed_matches || [];
-    const persisted = allConfirmed.filter(m => m.is_confirmed === true);
-    const autoSugg  = allConfirmed.filter(m => m.is_confirmed === false);
-    renderPersistedConfirmed(container, persisted);
+    const autoSugg = allConfirmed.filter(m => m.is_confirmed === false);
+    // persisted confirmed mappings (is_confirmed: true) are not rendered here;
+    // review them at /matches
     renderAutoSuggestions(container, autoSugg);
     renderCandidateGroups(container, data.candidate_groups || []);
     renderOnlySideBySide(container, data.reference_only || [], data.target_only || []);

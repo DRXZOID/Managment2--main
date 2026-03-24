@@ -178,3 +178,20 @@ Revisit this ADR if any of the following become true:
 - confirmed mappings need many-to-one or one-to-many semantics by design;
 - the project requires immutable decision history separate from current pair status;
 - operators need manual target search across the entire target store rather than selected target categories only.
+
+---
+
+## Implementation status (as of 2026-03-24)
+
+All three operator-facing capabilities described in this ADR are implemented:
+
+1. **Explicit rejection** — `POST /api/comparison/match-decision` with `match_status="rejected"`. Reject buttons are present on auto suggestions and candidate rows.
+2. **Manual target selection** — searchable picker in candidate cards and reference-only items; backed by `GET /api/comparison/eligible-target-products`.
+3. **Confirmed-pairs review page** — `/matches`, backed by `GET /api/product-mappings` (read-only in this wave).
+
+**Current UI split:**
+- The comparison page (`/`) renders active review items only: auto-high-confidence suggestions, candidate groups, reference-only, and target-only. It does **not** render a dedicated persisted confirmed section.
+- `/matches` is the canonical persisted-mapping review surface.
+
+The `POST /api/comparison/confirm-match` endpoint remains as a backward-compatibility shim; `POST /api/comparison/match-decision` is the primary path.
+

@@ -7,7 +7,8 @@ The application is a Flask-based product comparison system with a database-first
 At a high level, the system is split into four layers:
 
 1. presentation layer
-   - `/` user-facing comparison UI
+   - `/` user-facing comparison UI (auto suggestions, candidate groups, reference-only, target-only)
+   - `/matches` persisted confirmed mappings review (read-only table)
    - `/service` operational/admin UI
    - `/gap` content review UI for assortment gaps
 
@@ -55,7 +56,9 @@ User opens `/`
 → system loads mapped target categories
 → user triggers comparison
 → comparison is built from DB records and mappings
-→ user may confirm a match into persistent `ProductMapping`
+→ page shows: auto-high-confidence suggestions, candidate groups, reference-only, target-only
+→ user may confirm or reject a pair via `POST /api/comparison/match-decision`
+→ persisted confirmed mappings are browsed at `/matches` (backed by `GET /api/product-mappings`)
 
 ### 3. Gap review flow
 
@@ -67,11 +70,17 @@ User opens `/gap`
 
 ## Boundary guidance
 
-### What belongs in the main UI
+### What belongs in the main UI (`/`)
 
 - browsing DB-backed stores/categories/products
 - comparing mapped categories
-- showing confirmed matches, candidates, reference-only, target-only
+- showing auto-high-confidence suggestions, candidate groups, reference-only, target-only
+- confirming or rejecting pairs via match-decision
+
+### What belongs in the confirmed-pairs review page (`/matches`)
+
+- read-only table of persisted confirmed and rejected product mappings
+- filter and search over stored `ProductMapping` rows
 
 ### What belongs in the service UI
 
