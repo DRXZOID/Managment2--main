@@ -1,6 +1,6 @@
 """tests/test_scheduler_ui_flows.py — Backend smoke coverage for scheduler UI flows.
 
-Covers the API surface used by service.scheduler.js:
+Covers the API surface used by the Vue SchedulerApp island (frontend/src/pages/service/scheduler/):
   GET  /api/admin/scrape/jobs
   POST /api/admin/scrape/jobs
   GET  /api/admin/scrape/jobs/<id>

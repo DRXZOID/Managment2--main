@@ -13,6 +13,7 @@ This file is the master index for the internal documentation baseline.
 ## Architecture and decisions
 
 - [`architecture/overview.md`](architecture/overview.md)
+- [`frontend_architecture.md`](frontend_architecture.md) — Vue 3 + Vite frontend structure, entry points, conventions
 - [`adr/0001-db-first-architecture.md`](adr/0001-db-first-architecture.md)
 - [`adr/0002-confirmed-vs-candidate-mappings.md`](adr/0002-confirmed-vs-candidate-mappings.md)
 - [`adr/0003-gap-status-model.md`](adr/0003-gap-status-model.md)

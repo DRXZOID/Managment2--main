@@ -31,12 +31,36 @@ from pricewatch.core.registry import get_registry
 from pricewatch.db import Base, init_engine, init_db, get_session_factory, get_scoped_session
 from pricewatch.services.store_service import StoreService
 from pricewatch.web import register_blueprints
+from pricewatch.web.assets import register_asset_helpers
 
 logger = logging.getLogger(__name__)
 
 # Resolve the project root once at import time.
 # pricewatch/app_factory.py  →  pricewatch/  →  project root
 _PROJECT_ROOT: str = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# ---------------------------------------------------------------------------
+# Frontend / Vite asset integration defaults
+#
+# These keys configure the Flask ↔ Vite asset helper (pricewatch.web.assets).
+# All keys are optional — the app boots normally even when no frontend build
+# exists yet.  Override any key via config_override or environment-driven
+# config.
+#
+#   VITE_USE_DEV_SERVER   — True  → emit tags pointing at the Vite dev server
+#                           False → emit hashed production tags from manifest
+#   VITE_DEV_SERVER_URL   — Base URL of the local Vite dev server
+#   VITE_MANIFEST_PATH    — Absolute path to the Vite manifest.json produced
+#                           by  npm run build  inside frontend/.
+#                           Vite 5 writes it at  <outDir>/.vite/manifest.json;
+#                           once vite.config.ts outDir is set to
+#                           '../static/dist' this resolves to the path below.
+#   FRONTEND_DIST_URL_PREFIX — URL prefix prepended to hashed asset filenames
+#                              when building <script>/<link> tags.
+# ---------------------------------------------------------------------------
+_VITE_MANIFEST_DEFAULT = os.path.join(
+    _PROJECT_ROOT, "static", "dist", ".vite", "manifest.json"
+)
 
 
 def create_app(config_override=None) -> Flask:
@@ -71,6 +95,12 @@ def create_app(config_override=None) -> Flask:
     CORS(flask_app)
     flask_app.config.setdefault("ENABLE_ADMIN_SYNC", True)
     flask_app.json.ensure_ascii = False
+
+    # --- Frontend / Vite asset integration defaults ---
+    flask_app.config.setdefault("VITE_USE_DEV_SERVER", False)
+    flask_app.config.setdefault("VITE_DEV_SERVER_URL", "http://localhost:5173")
+    flask_app.config.setdefault("VITE_MANIFEST_PATH", _VITE_MANIFEST_DEFAULT)
+    flask_app.config.setdefault("FRONTEND_DIST_URL_PREFIX", "/static/dist")
 
     if config_override:
         flask_app.config.update(config_override)
@@ -120,6 +150,10 @@ def create_app(config_override=None) -> Flask:
 
     # --- Blueprint registration ---
     register_blueprints(flask_app)
+
+    # --- Frontend / Vite asset helper registration ---
+    # Adds vite_asset_tags() as a Jinja global.  No filesystem I/O here.
+    register_asset_helpers(flask_app)
 
     # NOTE: start_scheduler_if_enabled is intentionally NOT called here.
     # The web entry-point (app.py) calls it separately after create_app().

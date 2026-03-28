@@ -1,0 +1,4 @@
+// Placeholder composables directory.
+// Add Vue composables (useXxx.ts) here as shared logic is extracted.
+// Composables must not import Flask-specific runtime code.
+

@@ -7,10 +7,12 @@ The application is a Flask-based product comparison system with a database-first
 At a high level, the system is split into four layers:
 
 1. presentation layer
-   - `/` user-facing comparison UI (auto suggestions, candidate groups, reference-only, target-only)
-   - `/matches` persisted confirmed mappings review (read-only table)
-   - `/service` operational/admin UI
-   - `/gap` content review UI for assortment gaps
+   - Flask serves HTML page shells for each route; Vue 3 (Vite) owns all interactive UI within each page
+   - `/` user-facing comparison UI — store/category cascade, auto suggestions, candidate groups, reference-only, target-only; owned by `ComparisonPage.vue`
+   - `/matches` persisted confirmed mappings review (read-only table); owned by `MatchesPage.vue`
+   - `/service` operational/admin UI (categories, mappings, scheduler, history tabs); owned by `ServicePage.vue`
+   - `/gap` content review UI for assortment gaps; owned by `GapPage.vue`
+   - See [`frontend_architecture.md`](../frontend_architecture.md) for frontend conventions and entry point map
 
 2. application/services layer
    - store/category/product sync services

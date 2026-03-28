@@ -540,9 +540,10 @@ class TestMatchesUIRoute:
         assert resp.status_code == 200
         assert b"matches" in resp.data.lower() or "підтвердж".encode() in resp.data
 
-    def test_matches_page_contains_table(self, client):
+    def test_matches_page_contains_vue_mount_root(self, client):
+        # After Commit 11 the table is Vue-rendered; only the mount root is in the HTML.
         resp = client.get("/matches")
-        assert b"matchesTable" in resp.data or b"product-mappings" in resp.data
+        assert b"matches-app" in resp.data or b"product-mappings" in resp.data
 
 
 # ---------------------------------------------------------------------------

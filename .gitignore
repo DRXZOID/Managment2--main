@@ -110,3 +110,12 @@ Thumbs.db
 !.env.example
 secrets.json
 
+# ===========================
+# Frontend (Vue / Vite)
+# ===========================
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/*.tsbuildinfo
+static/dist/
+

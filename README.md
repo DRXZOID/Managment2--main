@@ -150,6 +150,52 @@ SCHEDULER_ENABLED=true SCHEDULER_AUTOSTART=true python app.py
 curl http://localhost:5000/api/scrape-status
 ```
 
+---
+
+## Frontend розробка (Vue 3 + Vite)
+
+Фронтенд побудований на Vue 3 + Vite 5 + TypeScript. Flask залишається власником маршрутизації та HTML-оболонки сторінок; Vue монтується у кожну сторінку через виділений entry-point.
+
+### Встановлення залежностей
+
+```bash
+cd frontend
+npm install
+```
+
+### Режим розробки (Vite dev server)
+
+```bash
+# У одному терміналі — Flask backend
+python app.py
+
+# В іншому терміналі — Vite dev server (hot-reload)
+cd frontend && npm run dev
+```
+
+У Flask конфігурації встановіть:
+```
+VITE_USE_DEV_SERVER=True
+VITE_DEV_SERVER_URL=http://localhost:5173
+```
+
+Тоді `{{ vite_asset_tags(...) }}` у Jinja-шаблонах буде підключати assets безпосередньо з Vite.
+
+### Production build
+
+```bash
+cd frontend && npm run build
+# Артефакти записуються у static/dist/
+```
+
+Flask читає `static/dist/.vite/manifest.json` і автоматично підставляє правильні хеш-іменовані asset-URL через `vite_asset_tags()`.
+
+### Запуск frontend-тестів
+
+```bash
+cd frontend && npm test
+```
+
 ### Виробниче середовище (Production)
 
 ```bash
@@ -170,7 +216,11 @@ APP_ENV=production python -m pricewatch.scrape.run_worker
 ## Тести
 
 ```bash
+# Python/pytest
 PYTHONPATH=. pytest -q
+
+# Frontend (Vitest)
+cd frontend && npm test
 ```
 
 Докладніше: [docs/testing/testing_strategy.md](docs/testing/testing_strategy.md).
@@ -189,9 +239,23 @@ Managment2--main/
 │   ├── services/       # Use-cases: синхронізація, маппінги, порівняння, gap
 │   ├── shops/          # Адаптери для кожного магазину
 │   └── web/            # Flask Blueprints — весь HTTP-шар (маршрути, серіалізатори)
+├── frontend/           # Vue 3 + Vite 5 + TypeScript фронтенд
+│   ├── src/
+│   │   ├── entries/    # Точки монтування Vue (index.ts, service.ts, gap.ts, matches.ts)
+│   │   ├── pages/      # Компоненти сторінок + composables + api (per-page)
+│   │   ├── components/ # Спільні Vue-компоненти (BaseButton, EmptyState, …)
+│   │   ├── composables/# Спільні composables (useAsyncState, …)
+│   │   ├── api/        # Спільний HTTP-клієнт та адаптери API
+│   │   ├── types/      # Фронтенд DTO-типи
+│   │   └── test/       # Vitest unit/component тести
+│   └── vite.config.ts
+├── static/
+│   ├── js/common.js    # Спільний скрипт (flash-повідомлення тощо)
+│   ├── css/            # Сторінкові та спільні CSS-файли
+│   └── dist/           # Vite build output (генерується автоматично)
 ├── migrations/         # Alembic міграції
-├── templates/          # HTML-шаблони (/, /service, /gap, /matches)
-├── tests/              # Тести
+├── templates/          # HTML-шаблони Flask (/, /service, /gap, /matches)
+├── tests/              # Python/pytest тести
 ├── docs/               # Детальна документація
 └── README.md
 ```
@@ -207,7 +271,8 @@ Managment2--main/
 - **Парсинг:** requests, BeautifulSoup4, lxml
 - **Порівняння:** rapidfuzz
 - **Міграції:** Alembic
-- **Frontend:** HTML5, CSS3, JavaScript
+- **Frontend:** Vue 3, Vite 5, TypeScript
+- **Frontend-тести:** Vitest, @vue/test-utils
 
 ---
 

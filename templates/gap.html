@@ -9,7 +9,7 @@
 </head>
 <body>
 
-<!-- Commit 4: shared shell header -->
+<!-- Flask owns: page shell header / nav -->
 <header class="app-shell-header">
     <div class="app-shell-title">📋 Розрив асортименту</div>
     <div class="app-shell-subtitle">Товари цільового магазину, які відсутні у референсному асортименті</div>
@@ -21,94 +21,17 @@
 </header>
 
 <main>
-
-    <!-- =============== FILTER PANEL =============== -->
-    <section class="panel">
-        <h2>Параметри перегляду</h2>
-        <div class="filter-grid">
-
-            <div class="form-group">
-                <label for="targetStoreSelect">Цільовий магазин</label>
-                <select id="targetStoreSelect">
-                    <option value="">— оберіть магазин —</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label for="refCategorySelect">Референсна категорія</label>
-                <select id="refCategorySelect" disabled>
-                    <option value="">— спочатку оберіть магазин —</option>
-                </select>
-            </div>
-
-            <div class="form-group">
-                <label>Цільові категорії (з маппінгів)</label>
-                <div class="multi-select-container" id="targetCatsContainer">
-                    <span class="muted" id="targetCatsPlaceholder">Оберіть референсну категорію</span>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label for="searchInput">Пошук за назвою</label>
-                <input type="text" id="searchInput" placeholder="напр. Bauer Vapor…">
-            </div>
-
-            <div class="form-group">
-                <label>Фільтри</label>
-                <div class="checkbox-group">
-                    <label class="checkbox-row"><input type="checkbox" id="filterAvailable"> Лише в наявності</label>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label>Статуси</label>
-                <div class="checkbox-group">
-                    <label class="checkbox-row"><input type="checkbox" id="statusNew" checked> Нові</label>
-                    <label class="checkbox-row"><input type="checkbox" id="statusInProgress" checked> В роботі</label>
-                    <label class="checkbox-row"><input type="checkbox" id="statusDone"> Опрацьовано</label>
-                </div>
-            </div>
-
-        </div>
-
-        <div class="form-actions" style="justify-content:flex-start; margin-top:18px;">
-            <button class="btn" id="loadGapBtn" disabled>Показати розрив</button>
-            <span id="noMappingsWarning" class="hidden" style="color:#92400e;font-size:0.9rem;">
-                ⚠️ Для цієї категорії немає маппінгів — налаштуйте їх на <a href="/service">сервісній сторінці</a>.
-            </span>
-        </div>
-    </section>
-
-    <!-- =============== SUMMARY =============== -->
-    <div class="summary-row hidden" id="summaryRow">
-        <div class="summary-card">
-            <div class="num" id="sumTotal">0</div>
-            <div class="lbl">Усього</div>
-        </div>
-        <div class="summary-card">
-            <div class="num" id="sumNew">0</div>
-            <div class="lbl">Нові</div>
-        </div>
-        <div class="summary-card">
-            <div class="num" id="sumInProgress">0</div>
-            <div class="lbl">В роботі</div>
-        </div>
-        <div class="summary-card">
-            <div class="num" id="sumDone">0</div>
-            <div class="lbl">Опрацьовано</div>
-        </div>
-    </div>
-
-    <!-- =============== STATUS / SPINNER =============== -->
-    <div id="statusArea"></div>
-
-    <!-- =============== RESULTS =============== -->
-    <div id="resultsArea"></div>
-
+    <!--
+      Vue app root — GapPage.vue (Commit 12)
+      Owns: filters, cascade loading, summary, grouped results, item actions.
+      Mounted from frontend/src/entries/gap.ts.
+    -->
+    <div id="gap-app"></div>
 </main>
 
 <script src="/static/js/common.js"></script>
-<script src="/static/js/gap.js"></script>
+
+{{ vite_asset_tags('src/entries/gap.ts') }}
 </body>
 </html>
 

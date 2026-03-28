@@ -1,0 +1,20 @@
+/*
+ * base.css — Vue island base styles
+ *
+ * Scope: styles for Vue-owned UI islands only.
+ *
+ * IMPORTANT: global visual ownership still belongs to static/css/common.css.
+ * Do NOT add global resets or full-page styles here.
+ * This file may grow as Vue islands are introduced.
+ */
+
+/*
+ * Minimal box-model normalization scoped to Vue mount containers.
+ * Apply to the root element of each Vue island via a scoping class.
+ */
+.vue-island *,
+.vue-island *::before,
+.vue-island *::after {
+  box-sizing: border-box;
+}
+
