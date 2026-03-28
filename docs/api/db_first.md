@@ -171,8 +171,8 @@ Fields:
 ```
 
 **`confirmed_matches` fields:**
-- `is_confirmed: true` — persisted `ProductMapping` in DB.
-- `is_confirmed: false` — auto-high-confidence (≥ 85%) from heuristics, not yet confirmed.
+- `is_confirmed: true` — persisted `ProductMapping` in DB. Included in the payload for completeness; the comparison page **does not** render a dedicated section for these — persisted mappings are reviewed at `/matches`.
+- `is_confirmed: false` — auto-high-confidence (≥ 85%) from heuristics, not yet confirmed. These are shown on the comparison page as auto-suggestions.
 - `match_source`: `"confirmed"` | `"heuristic_high_confidence"` | `"heuristic"`.
 
 **Candidate fields:**
@@ -187,9 +187,46 @@ Fields:
 
 ---
 
-### `POST /api/comparison/confirm-match`
+### `POST /api/comparison/match-decision` *(primary)*
 
-Persists a confirmed product match into `ProductMapping`.
+Persists an explicit operator decision for an exact reference-target product pair.
+
+**Request:**
+```json
+{
+  "reference_product_id": 10,
+  "target_product_id": 20,
+  "match_status": "confirmed",
+  "confidence": 0.97,
+  "comment": "optional note",
+  "target_category_ids": [5, 6]
+}
+```
+
+Fields:
+- `match_status` — **required**: `"confirmed"` or `"rejected"`.
+- `confidence` — optional numeric.
+- `comment` — optional text.
+- `target_category_ids` — optional list of integers. When provided for a `confirmed` decision the server validates that the target product belongs to one of the supplied categories and that each category is a valid mapped target for the reference product's category (scope guard). Old callers that omit this field continue to work.
+
+**Response:** `{"product_mapping": {...}}`
+
+**Errors:**
+- `HTTP 409` if `confirmed` decision would violate the one-target-per-confirmed-pair invariant:
+  ```json
+  {"error": "target product is already confirmed for another reference product", "conflicting_reference_product_id": 99}
+  ```
+- `HTTP 400` if `target_category_ids` supplied but target product's category is not in that list.
+
+After a `confirmed` decision the pair appears in `confirmed_matches` with `is_confirmed: true` and is reviewed at `/matches`. A `rejected` decision suppresses the pair from future comparison output.
+
+---
+
+### `POST /api/comparison/confirm-match` *(backward-compat shim)*
+
+> **Deprecated path.** This endpoint internally calls `POST /api/comparison/match-decision` with
+> `match_status="confirmed"`. Kept for backward compatibility; new callers should use
+> `POST /api/comparison/match-decision` directly.
 
 **Request:**
 ```json
@@ -203,7 +240,72 @@ Persists a confirmed product match into `ProductMapping`.
 
 **Response:** `{"product_mapping": {...}}`
 
-After confirmation, the next comparison will show this match in `confirmed_matches` with `is_confirmed: true`.
+---
+
+### `GET /api/comparison/eligible-target-products`
+
+Returns the scoped list of eligible target products for manual selection during comparison review.
+
+**Query parameters:**
+- `reference_product_id` — **required**.
+- `target_category_ids` — **required** (repeatable): list of target category ids matching the current comparison scope.
+- `search` — optional text filter (minimum 2 characters in the UI).
+- `limit` — optional, default small page size.
+- `include_rejected` — optional boolean (`true`/`false`), default `false`. When `true`, previously rejected pairs for this reference product are re-included.
+
+Globally confirmed targets are always excluded regardless of `include_rejected`.
+
+**Response:**
+```json
+{
+  "products": [
+    {
+      "id": 456,
+      "name": "Target product name",
+      "store_id": 8,
+      "category_id": 77,
+      "category": {"id": 77, "name": "Category name", "store_name": "Shop"},
+      "price": 8999.0,
+      "currency": "UAH",
+      "product_url": "https://..."
+    }
+  ]
+}
+```
+
+---
+
+### `GET /api/product-mappings`
+
+Returns persisted product mappings for the confirmed-pairs review page (`/matches`).
+
+**Query parameters (all optional):**
+- `reference_store_id`
+- `target_store_id`
+- `reference_category_id`
+- `target_category_id`
+- `status` — default `confirmed`. Accepts `confirmed` or `rejected`.
+- `search` — case-insensitive substring on product name.
+
+**Response:**
+```json
+{
+  "mappings": [
+    {
+      "id": 5,
+      "reference_product": {"id": 10, "name": "Bauer Vapor X5 SR", "product_url": "https://..."},
+      "target_product":    {"id": 20, "name": "Bauer Vapor X5 Senior", "product_url": "https://..."},
+      "reference_category": {"id": 1, "name": "Ковзани"},
+      "target_category":    {"id": 5, "name": "Ковзани", "store_name": "HockeyShop"},
+      "match_status": "confirmed",
+      "confidence": 0.97,
+      "comment": null,
+      "created_at": "2026-03-24T10:00:00",
+      "updated_at": "2026-03-24T10:00:00"
+    }
+  ]
+}
+```
 
 ---
 

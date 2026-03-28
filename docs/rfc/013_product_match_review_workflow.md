@@ -1,6 +1,6 @@
 # RFC-013: Product Match Review Workflow — Reject, Manual Selection, and Confirmed Pairs Page
 
-- **Status:** Draft
+- **Status:** Implemented
 - **Date:** 2026-03-24
 - **Owners:** Project maintainers
 - **Related ADRs:** ADR-0001, ADR-0002, ADR-0012
@@ -338,11 +338,13 @@ A selected manual target can then be submitted through the match-decision endpoi
 
 The page must not visually imply that an auto-high-confidence heuristic pair is already persisted.
 
-At minimum, the UI must distinguish:
+**Current implementation:** the comparison page (`/`) renders only active review items — auto-high-confidence suggestions (not yet confirmed), candidate groups, reference-only, and target-only. Persisted confirmed mappings (`is_confirmed: true`) are not shown as a dedicated section on the comparison page. They are reviewed on the `/matches` page.
 
-- persisted confirmed mapping;
-- auto suggestion awaiting operator action;
-- candidate list awaiting operator action.
+At minimum, the UI distinguishes:
+
+- auto suggestion awaiting operator action (`is_confirmed: false`, shown on `/`);
+- candidate list awaiting operator action (shown on `/`);
+- persisted confirmed mapping (reviewed at `/matches`).
 
 ## 9.4 New confirmed mappings page
 
@@ -435,9 +437,9 @@ The following topics are explicitly deferred and are not blockers for this RFC:
 
 This RFC is satisfied when all of the following are true:
 
-1. operators can reject an incorrect exact pair from the comparison page;
-2. rejected pairs do not reappear during later comparison;
-3. operators can manually confirm an eligible target product from the selected target categories;
-4. the UI clearly separates persisted confirmed mappings from runtime heuristic suggestions;
-5. a dedicated read-only confirmed mappings page exists and is backed by a list API;
-6. current confirmed mapping invariants remain enforced.
+1. operators can reject an incorrect exact pair from the comparison page; ✅
+2. rejected pairs do not reappear during later comparison; ✅
+3. operators can manually confirm an eligible target product from the selected target categories; ✅
+4. the UI clearly separates persisted confirmed mappings from runtime heuristic suggestions — persisted mappings are not rendered on the comparison page; they are reviewed at `/matches`; ✅
+5. a dedicated read-only confirmed mappings page exists and is backed by a list API (`GET /api/product-mappings`); ✅
+6. current confirmed mapping invariants remain enforced. ✅

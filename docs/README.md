@@ -25,6 +25,7 @@ The purpose of `docs/` is to split those concerns into focused documents with st
 7. `integrations/adapter_contract.md`
 8. `operations/sync_lifecycle.md`
 9. `api/internal_legacy.md`
+10. `adr/0012_product_match_review.md` — match-decision workflow, `/matches` review surface
 
 ## Documentation rules
 

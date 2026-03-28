@@ -1,0 +1,5 @@
+// Placeholder API adapter directory.
+// Add typed fetch wrappers here that call existing /api/... Flask endpoints.
+// Do NOT redesign backend API contracts in this layer — use the existing shapes.
+// Adapter functions should return typed responses using types from src/types/.
+

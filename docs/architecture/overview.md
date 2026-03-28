@@ -7,9 +7,12 @@ The application is a Flask-based product comparison system with a database-first
 At a high level, the system is split into four layers:
 
 1. presentation layer
-   - `/` user-facing comparison UI
-   - `/service` operational/admin UI
-   - `/gap` content review UI for assortment gaps
+   - Flask serves HTML page shells for each route; Vue 3 (Vite) owns all interactive UI within each page
+   - `/` user-facing comparison UI — store/category cascade, auto suggestions, candidate groups, reference-only, target-only; owned by `ComparisonPage.vue`
+   - `/matches` persisted confirmed mappings review (read-only table); owned by `MatchesPage.vue`
+   - `/service` operational/admin UI (categories, mappings, scheduler, history tabs); owned by `ServicePage.vue`
+   - `/gap` content review UI for assortment gaps; owned by `GapPage.vue`
+   - See [`frontend_architecture.md`](../frontend_architecture.md) for frontend conventions and entry point map
 
 2. application/services layer
    - store/category/product sync services
@@ -55,7 +58,9 @@ User opens `/`
 → system loads mapped target categories
 → user triggers comparison
 → comparison is built from DB records and mappings
-→ user may confirm a match into persistent `ProductMapping`
+→ page shows: auto-high-confidence suggestions, candidate groups, reference-only, target-only
+→ user may confirm or reject a pair via `POST /api/comparison/match-decision`
+→ persisted confirmed mappings are browsed at `/matches` (backed by `GET /api/product-mappings`)
 
 ### 3. Gap review flow
 
@@ -67,11 +72,17 @@ User opens `/gap`
 
 ## Boundary guidance
 
-### What belongs in the main UI
+### What belongs in the main UI (`/`)
 
 - browsing DB-backed stores/categories/products
 - comparing mapped categories
-- showing confirmed matches, candidates, reference-only, target-only
+- showing auto-high-confidence suggestions, candidate groups, reference-only, target-only
+- confirming or rejecting pairs via match-decision
+
+### What belongs in the confirmed-pairs review page (`/matches`)
+
+- read-only table of persisted confirmed and rejected product mappings
+- filter and search over stored `ProductMapping` rows
 
 ### What belongs in the service UI
 

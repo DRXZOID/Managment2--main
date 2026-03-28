@@ -13,11 +13,13 @@ This file is the master index for the internal documentation baseline.
 ## Architecture and decisions
 
 - [`architecture/overview.md`](architecture/overview.md)
+- [`frontend_architecture.md`](frontend_architecture.md) — Vue 3 + Vite frontend structure, entry points, conventions
 - [`adr/0001-db-first-architecture.md`](adr/0001-db-first-architecture.md)
 - [`adr/0002-confirmed-vs-candidate-mappings.md`](adr/0002-confirmed-vs-candidate-mappings.md)
 - [`adr/0003-gap-status-model.md`](adr/0003-gap-status-model.md)
 - [`adr/0004-adapter-registry-boundary.md`](adr/0004-adapter-registry-boundary.md)
 - [`adr/0005-legacy-debug-endpoint-containment.md`](adr/0005-legacy-debug-endpoint-containment.md)
+- [`adr/0012_product_match_review.md`](adr/0012_product_match_review.md) — explicit match decisions, reject, `/matches` review surface
 
 ## Domain
 
@@ -29,15 +31,17 @@ This file is the master index for the internal documentation baseline.
 
 ## API
 
-- [`api/db_first.md`](api/db_first.md) — DB-first endpoints (comparison, gap) with full JSON examples
-- [`api/admin.md`](api/admin.md) — service/admin endpoints (sync, mappings, history)
+- [`api/db_first.md`](api/db_first.md) — DB-first endpoints (comparison, gap, match-decision, product-mappings) with full JSON examples
+- [`api/admin.md`](api/admin.md) — service/admin endpoints (sync, mappings, history, product-match review)
 - [`api/openapi_outline.md`](api/openapi_outline.md)
+- [`rfc/013_product_match_review_workflow.md`](rfc/013_product_match_review_workflow.md) — reject, manual selection, `/matches` page
 
 ## Operations and integrations
 
 - [`operations/sync_lifecycle.md`](operations/sync_lifecycle.md) — sync flow, DB config, Alembic, DTO contract
 - [`operations/runbooks.md`](operations/runbooks.md)
 - [`operations/incidents_and_failure_modes.md`](operations/incidents_and_failure_modes.md)
+- [`operations/frontend_release_checklist.md`](operations/frontend_release_checklist.md) — pre-merge checklist for frontend changes
 - [`integrations/adapter_contract.md`](integrations/adapter_contract.md)
 
 ## Testing

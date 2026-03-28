@@ -27,6 +27,12 @@ Rules:
 - `is_confirmed: false` — auto-high-confidence (≥ 85 %) from heuristics, not yet manually confirmed
 - `match_source`: `"confirmed"` | `"heuristic_high_confidence"` | `"heuristic"`
 
+**Review surfaces:**
+- The **comparison page (`/`)** shows only active review items: auto-high-confidence suggestions (`is_confirmed: false`), candidate groups, reference-only, and target-only. Persisted confirmed mappings are not rendered as a dedicated section there.
+- The **`/matches` page** is the dedicated read-only surface for browsing persisted confirmed (`is_confirmed: true`) and rejected mappings. It is backed by `GET /api/product-mappings`.
+
+The `confirmed_matches` field is still present in the `POST /api/comparison` response payload (for completeness and backward compatibility), but the comparison page UI does not render it as a separate section.
+
 ## Candidate groups
 
 Candidate groups are runtime-only heuristic results.

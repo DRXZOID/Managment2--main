@@ -54,7 +54,7 @@ The canonical catalog flow (DB-first) uses `GET /api/stores/<id>/categories` ins
 New feature code must not introduce new runtime dependencies on adapter routes.
 
 **Runtime consumer audit result (confirmed):**
-The main user-facing UI (`index.js`, `gap.js`, `service.js`) does **not** depend on adapter routes.
+The main user-facing Vue apps (`/`, `/gap`, `/service`, `/matches`) do **not** depend on adapter routes.
 All adapter-route consumers are test-only.
 Full inventory: [`docs/api/adapter_routes_inventory.md`](api/adapter_routes_inventory.md).
 
@@ -75,6 +75,46 @@ Rules:
 - migrations are append-only except in pre-release rewrite situations explicitly approved by maintainers;
 - documentation should reference semantic schema intent rather than migration internals.
 
+### `frontend/`
+Vue 3 + Vite 5 + TypeScript frontend source tree.
+
+Flask owns: routing, HTML page shells, API.
+Vue owns: all interactive UI within each page.
+
+This is **not** a SPA rewrite. Flask still serves each page as a separate HTML response. Vue is mounted incrementally per page, with no Vue Router or Pinia.
+
+#### Entry points (`frontend/src/entries/`)
+
+| File | Page | Mount root |
+|---|---|---|
+| `index.ts` | `/` — main comparison page | `#comparison-app` |
+| `service.ts` | `/service` — service console | `#serviceApp` |
+| `gap.ts` | `/gap` — gap review | `#gap-app` |
+| `matches.ts` | `/matches` — confirmed matches | `#matches-app` |
+
+#### Pages (`frontend/src/pages/`)
+Each page has its own subdirectory with:
+- root page component (`*Page.vue`);
+- `components/` — page-specific Vue components;
+- `composables/` — page-specific state/logic composables;
+- `api.ts` — thin fetch wrappers for that page's endpoints;
+- `types.ts` — DTO types for that page.
+
+#### Shared frontend foundation
+| Path | Purpose |
+|---|---|
+| `frontend/src/components/` | Shared Vue components (`BaseButton`, `EmptyState`, `StatusPill`, …) |
+| `frontend/src/composables/` | Shared composables (`useAsyncState`, …) |
+| `frontend/src/api/` | Low-level HTTP client (`http.ts`), shared endpoint helpers (`client.ts`), adapters |
+| `frontend/src/types/` | Shared DTO types (`store.ts`, `scheduler.ts`, `mappings.ts`, …) |
+| `frontend/src/styles/` | Shared frontend styles |
+| `frontend/src/test/` | Vitest unit and component tests |
+
+#### Flask ↔ Vite integration
+- Dev mode: `VITE_USE_DEV_SERVER=True` → `vite_asset_tags()` proxies to Vite dev server.
+- Production: `npm run build` writes to `static/dist/`; Flask reads `static/dist/.vite/manifest.json`.
+- Jinja usage: `{{ vite_asset_tags('src/entries/<page>.ts') }}` emits all CSS + JS tags.
+
 ### `tests/`
 Executable specification of expected behavior.
 
@@ -89,10 +129,26 @@ Target role:
 - remain the final enforcement layer after docs/spec updates.
 
 ### `templates/`
-Server-rendered HTML templates for UI pages such as `/`, `/service`, and `/gap`.
+Server-rendered HTML page shells for Flask-owned routes (`/`, `/service`, `/gap`, `/matches`).
+
+Each template:
+- includes shared CSS from `static/css/`;
+- may include `static/js/common.js` for shared UI utilities;
+- contains a single `<div id="...-app"></div>` Vue mount root;
+- loads the correct Vite entry via `{{ vite_asset_tags('src/entries/<page>.ts') }}`.
+
+There are no inline `onclick` handlers or page-specific imperative JS remaining in templates.
 
 ### `static/`
-CSS, JS, image, and other browser-consumed assets.
+Browser-consumed static assets.
+
+| Path | Status |
+|---|---|
+| `static/css/common.css` | **Active** — shared base styles used by all pages |
+| `static/css/<page>.css` | **Active** — page-specific styles (`index.css`, `service.css`, `gap.css`, `matches.css`) |
+| `static/dist/` | **Generated** — Vite production build output; not committed to source control |
+
+All legacy page-specific scripts (`index.js`, `gap.js`, `matches.js`, `service.js`, `service.*.js`, `common.js`) have been removed after migration to Vue. The `static/js/` directory is now empty and can be removed if no new static scripts are needed.
 
 ### Root documentation files
 Examples:
@@ -108,8 +164,10 @@ Root files should stay lightweight and navigational. Stable detailed specs belon
 ### UI Layer
 Includes:
 - HTML page routes (`pricewatch/web/ui_routes.py`);
-- template rendering;
-- page-specific JS/CSS coordination.
+- template rendering (Flask/Jinja, `templates/`);
+- Vue 3 frontend apps mounted per-page (`frontend/src/entries/`);
+- Vite build/dev pipeline (`frontend/vite.config.ts`);
+- Flask ↔ Vite asset integration (`pricewatch/web/assets.py` — `vite_asset_tags` Jinja global).
 
 Should not contain:
 - scraping adapter logic;
