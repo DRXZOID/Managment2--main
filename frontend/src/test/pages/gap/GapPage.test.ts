@@ -186,6 +186,66 @@ describe('useGapData', () => {
     expect(d.error.value).toContain('Network fail')
     expect(d.hasLoaded.value).toBe(false)
   })
+
+  it('does NOT clear result during subsequent reload (non-destructive)', async () => {
+    const d = useGapData()
+    await d.loadGap(sampleBody)
+    const firstResult = d.result.value
+
+    // Block second load
+    let resolve!: (v: typeof gapResult) => void
+    vi.mocked(gapApi.postGapQuery).mockReturnValue(
+      new Promise<typeof gapResult>((r) => { resolve = r }),
+    )
+
+    const loadPromise = d.loadGap(sampleBody)
+    // result still visible while loading
+    expect(d.result.value).toBe(firstResult)
+    expect(d.hasLoaded.value).toBe(true)
+
+    resolve(gapResult)
+    await loadPromise
+    expect(d.result.value).not.toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// patchGapResult unit tests
+// ---------------------------------------------------------------------------
+
+import { patchGapItemStatus } from '@/pages/gap/composables/patchGapResult'
+
+describe('patchGapItemStatus', () => {
+  it('updates status of the matching item', () => {
+    const patched = patchGapItemStatus(gapResult, 100, 'in_progress')
+    const item = patched.groups[0].items.find((i) => i.target_product?.id === 100)
+    expect(item?.status).toBe('in_progress')
+  })
+
+  it('recalculates summary counters correctly', () => {
+    // Original: new=1, in_progress=1
+    const patched = patchGapItemStatus(gapResult, 100, 'done')
+    // Item 100 was 'new' → now 'done'; item 101 stays 'in_progress'
+    expect(patched.summary.new).toBe(0)
+    expect(patched.summary.in_progress).toBe(1)
+    expect(patched.summary.done).toBe(1)
+  })
+
+  it('preserves total in summary', () => {
+    const patched = patchGapItemStatus(gapResult, 100, 'done')
+    expect(patched.summary.total).toBe(gapResult.summary.total)
+  })
+
+  it('returns original result unchanged when targetProductId not found', () => {
+    const patched = patchGapItemStatus(gapResult, 9999, 'done')
+    expect(patched).toBe(gapResult)
+  })
+
+  it('does not mutate the original result', () => {
+    const originalStatus = gapResult.groups[0].items[0].status
+    patchGapItemStatus(gapResult, 100, 'done')
+    expect(gapResult.groups[0].items[0].status).toBe(originalStatus)
+  })
 })
 
 // ---------------------------------------------------------------------------

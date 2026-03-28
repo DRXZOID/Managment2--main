@@ -135,16 +135,63 @@ describe('useMatchesPage — loadMappings', () => {
     expect(state.errorMessage.value).toContain('Network error')
     expect(state.hasLoaded.value).toBe(false)
   })
+
+  it('preserves existing rows while loading (non-destructive)', async () => {
+    vi.mocked(matchesApi.listProductMappings).mockResolvedValue({ rows: [makeRow()], total: 1 })
+    const state = useMatchesPage()
+    await state.loadMappings()
+    expect(state.rows.value).toHaveLength(1)
+
+    // Block the second load
+    let resolve!: (v: { rows: ReturnType<typeof makeRow>[]; total: number }) => void
+    vi.mocked(matchesApi.listProductMappings).mockReturnValue(
+      new Promise<{ rows: ReturnType<typeof makeRow>[]; total: number }>((r) => { resolve = r }),
+    )
+
+    const loadPromise = state.loadMappings()
+    // Rows stay visible while loading
+    expect(state.rows.value).toHaveLength(1)
+    expect(state.hasLoaded.value).toBe(true)
+
+    resolve({ rows: [makeRow(), makeRow({ id: 2, reference_product_id: 101, target_product_id: 201 })], total: 2 })
+    await loadPromise
+    expect(state.rows.value).toHaveLength(2)
+  })
 })
 
 describe('useMatchesPage — deleteRow', () => {
-  it('calls deleteProductMapping and reloads on confirm=true', async () => {
+  it('removes row locally without calling list reload', async () => {
     vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
     vi.mocked(matchesApi.listProductMappings).mockResolvedValue({ rows: [makeRow()], total: 1 })
     const state = useMatchesPage()
+    await state.loadMappings()
+    expect(state.rows.value).toHaveLength(1)
+
     await state.deleteRow(1)
     expect(matchesApi.deleteProductMapping).toHaveBeenCalledWith(1)
-    expect(matchesApi.listProductMappings).toHaveBeenCalled()
+    // loadMappings must NOT be called after delete
+    expect(matchesApi.listProductMappings).toHaveBeenCalledTimes(1)
+    expect(state.rows.value).toHaveLength(0)
+    vi.unstubAllGlobals()
+  })
+
+  it('decrements total after delete', async () => {
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
+    vi.mocked(matchesApi.listProductMappings).mockResolvedValue({ rows: [makeRow()], total: 5 })
+    const state = useMatchesPage()
+    await state.loadMappings()
+    await state.deleteRow(1)
+    expect(state.total.value).toBe(4)
+    vi.unstubAllGlobals()
+  })
+
+  it('shows empty-state infoMessage after last row is deleted', async () => {
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
+    vi.mocked(matchesApi.listProductMappings).mockResolvedValue({ rows: [makeRow()], total: 1 })
+    const state = useMatchesPage()
+    await state.loadMappings()
+    await state.deleteRow(1)
+    expect(state.infoMessage.value).toContain('не знайдено')
     vi.unstubAllGlobals()
   })
 

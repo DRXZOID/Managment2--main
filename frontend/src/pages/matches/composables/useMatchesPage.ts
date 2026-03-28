@@ -9,6 +9,12 @@
  *   - loading / error / info states
  *   - delete action (with window.confirm guard)
  *
+ * Mutation UX policy:
+ *   - loadMappings() is non-destructive: existing rows stay visible while
+ *     loading=true so the table does not disappear on filter/refresh.
+ *   - deleteRow() removes the row locally after success — does NOT call
+ *     loadMappings() to avoid a full table flash.
+ *
  * Called from MatchesPage.vue — no direct DOM access here.
  */
 import { ref, computed, reactive } from 'vue'
@@ -146,9 +152,7 @@ export function useMatchesPage(): MatchesPageState {
     errorMessage.value = null
     infoMessage.value = null
     isLoadingRows.value = true
-    rows.value = []
-    total.value = 0
-    hasLoaded.value = false
+    // Do NOT clear rows/total/hasLoaded — keep current data visible during fetch
 
     try {
       const result = await listProductMappings(filters)
@@ -175,7 +179,12 @@ export function useMatchesPage(): MatchesPageState {
 
     try {
       await deleteProductMapping(mappingId)
-      await loadMappings()
+      // Local removal — do NOT reload the full list
+      rows.value = rows.value.filter((r) => r.id !== mappingId)
+      total.value = Math.max(0, total.value - 1)
+      if (rows.value.length === 0) {
+        infoMessage.value = 'Збігів не знайдено для обраних фільтрів.'
+      }
     } catch (err) {
       errorMessage.value = 'Помилка видалення: ' + _errMsg(err)
     } finally {

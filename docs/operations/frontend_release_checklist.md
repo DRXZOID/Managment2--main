@@ -91,6 +91,20 @@ For each page also verify:
 
 ---
 
+## Mutation UX regression checks
+
+After any change to composables that handle mutations (comparison decisions, gap status, matches delete):
+
+- [ ] Confirm/reject on `/` does **not** blank comparison sections between click and response
+- [ ] Gap status change updates the row and summary **without** blanking the group table
+- [ ] Delete on `/matches` removes only the affected row; table stays visible
+- [ ] `total` on `/matches` decrements correctly after delete
+- [ ] Empty-state message appears only when the last row is removed
+
+See [`docs/frontend_architecture.md#mutation-ux-policy`](../frontend_architecture.md) for implementation rules.
+
+---
+
 ## After merge
 
 - Ensure CI (`python-app.yml`) is green on `main`:

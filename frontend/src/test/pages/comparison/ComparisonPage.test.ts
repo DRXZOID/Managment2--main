@@ -299,6 +299,39 @@ describe('useComparisonPage — makeDecision', () => {
     expect(compApi.runComparison).toHaveBeenCalledTimes(1)
   })
 
+  it('does NOT blank comparisonResult during background refresh after decision', async () => {
+    const p = useComparisonPage()
+    await p.loadStores()
+    await flushPromises()
+    await p.selectRefCategory(10)
+    await flushPromises()
+    await p.compare()
+
+    // Capture visible result before decision
+    const resultBefore = p.comparisonResult.value
+    expect(resultBefore).not.toBeNull()
+
+    // Block the refresh so we can inspect state mid-flight
+    let resolveRefresh!: () => void
+    vi.mocked(compApi.runComparison).mockReturnValue(
+      new Promise<typeof comparisonResult>((resolve) => {
+        resolveRefresh = () => resolve(comparisonResult)
+      }),
+    )
+
+    const decisionPromise = p.makeDecision(100, 200, 'rejected')
+
+    // While the refresh is in-flight, result should still be the old value
+    expect(p.comparisonResult.value).toBe(resultBefore)
+    expect(p.hasCompared.value).toBe(true)
+
+    resolveRefresh()
+    await decisionPromise
+
+    // After refresh resolves, result is updated
+    expect(p.comparisonResult.value).not.toBeNull()
+  })
+
   it('sets decisionError on failure without crashing', async () => {
     vi.mocked(compApi.saveMatchDecision).mockRejectedValue(new Error('conflict'))
     const p = useComparisonPage()

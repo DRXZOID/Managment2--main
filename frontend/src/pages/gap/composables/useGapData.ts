@@ -1,5 +1,10 @@
 /**
  * useGapData.ts — Gap query state for POST /api/gap.
+ *
+ * Mutation UX policy:
+ *   - loadGap() is non-destructive for subsequent loads: current result stays
+ *     visible while the new request is in-flight (loading=true but result unchanged).
+ *   - Only the very first load (hasLoaded===false) treats result as empty initially.
  */
 import { ref } from 'vue'
 import type { Ref } from 'vue'
@@ -25,8 +30,7 @@ export function useGapData(): GapDataState {
   async function loadGap(body: GapRequestBody): Promise<void> {
     loading.value = true
     error.value = null
-    result.value = null
-    hasLoaded.value = false
+    // Keep current result visible during reload — do NOT clear result or hasLoaded
     lastBody.value = body
 
     try {
@@ -41,4 +45,3 @@ export function useGapData(): GapDataState {
 
   return { result, loading, error, hasLoaded, lastBody, loadGap }
 }
-

@@ -6,7 +6,13 @@
  *   - reference category selection + dependent mapped-targets loading
  *   - target store filter changes
  *   - comparison execution (POST /api/comparison)
- *   - confirm / reject decisions + full-page refresh after each action
+ *   - confirm / reject decisions + background refresh after each action
+ *
+ * Mutation UX policy:
+ *   - compare()       — foreground: clears visible result before fetch (manual button)
+ *   - makeDecision()  — background: keeps visible result on screen during refresh
+ *     After saveMatchDecision succeeds, _runComparison() is called without blanking
+ *     comparisonResult so sections stay visible until replacement data arrives.
  */
 import { ref, computed } from 'vue'
 import {
@@ -159,12 +165,15 @@ export function useComparisonPage() {
     selectedTargetCategoryIds.value = next
   }
 
-  async function compare(): Promise<void> {
+  // ── Internal ─────────────────────────────────────────────────────────────
+
+  /** Shared API call — does NOT touch comparisonResult or hasCompared before fetch.
+   *  Used for both foreground compare (after caller clears state) and background
+   *  refresh after decisions (caller keeps current result visible). */
+  async function _runComparison(): Promise<void> {
     if (!canCompare.value) return
-    isComparing.value      = true
-    comparisonError.value  = null
-    comparisonResult.value = null
-    hasCompared.value      = false
+    isComparing.value     = true
+    comparisonError.value = null
     try {
       const body = {
         reference_category_id: referenceCategoryId.value!,
@@ -179,6 +188,18 @@ export function useComparisonPage() {
     } finally {
       isComparing.value = false
     }
+  }
+
+  // ── Actions ──────────────────────────────────────────────────────────────
+
+  /**
+   * Foreground compare — triggered by the manual "Порівняти" button.
+   * Clears visible result first so the UI resets cleanly before the request.
+   */
+  async function compare(): Promise<void> {
+    comparisonResult.value = null
+    hasCompared.value      = false
+    await _runComparison()
   }
 
   async function makeDecision(
@@ -198,8 +219,8 @@ export function useComparisonPage() {
           ? { target_category_ids: Array.from(selectedTargetCategoryIds.value) }
           : {}),
       })
-      // Full refresh — matches current legacy behavior
-      await compare()
+      // Background refresh — current sections stay visible until new data arrives
+      await _runComparison()
     } catch (err) {
       decisionError.value =
         'Помилка збереження рішення: ' + (err instanceof Error ? err.message : String(err))

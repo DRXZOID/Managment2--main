@@ -201,3 +201,26 @@ Test files live under `frontend/src/test/` mirroring the source tree:
 - **No parallel DOM/Vue ownership.** Each page has exactly one owner after migration.
 - **Do not import page `api.ts` across pages.** Shared API helpers belong in `frontend/src/api/client.ts`.
 
+---
+
+## Mutation UX Policy
+
+After any data mutation (confirm/reject match, gap status change, delete row), the rule is:
+
+> **Do not blank visible page content.** Keep current data on screen until the replacement arrives.
+
+### Per-page implementation
+
+| Page | Mutation | Implementation |
+|---|---|---|
+| `/` (comparison) | confirm / reject | `makeDecision()` calls `_runComparison()` without clearing `comparisonResult` first — sections stay visible during background refresh |
+| `/gap` | status change | `patchGapItemStatus()` updates item + recalculates summary locally; fallback to non-destructive `loadGap()` only when item not found |
+| `/matches` | delete row | Row removed locally from `rows` + `total` decremented; `loadMappings()` is NOT called after delete |
+
+### Rules for new mutations
+1. **Never clear the table/result array before the API call returns.**
+2. Use row-level `inProgressId` / `decisionInProgressKey` for per-item loading indicators.
+3. Prefer local patching when the state transition is simple and deterministic.
+4. If local patch is insufficient, use a non-destructive reload (keep `loading=true` but preserve `result`/`rows`).
+5. Never use `hasLoaded = false` or `rows = []` mid-flight on an already-loaded page.
+

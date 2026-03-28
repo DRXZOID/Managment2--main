@@ -74,6 +74,7 @@ import { onMounted } from 'vue'
 import { useGapFilters } from './composables/useGapFilters'
 import { useGapData } from './composables/useGapData'
 import { useGapActions } from './composables/useGapActions'
+import { patchGapItemStatus } from './composables/patchGapResult'
 import GapFilters from './components/GapFilters.vue'
 import GapSummary from './components/GapSummary.vue'
 import GapStatusBanner from './components/GapStatusBanner.vue'
@@ -111,7 +112,20 @@ async function handleLoad() {
 
 async function handleAction(refCatId: number, targetProductId: number, status: GapItemStatus) {
   const ok = await actions.setStatus(refCatId, targetProductId, status)
-  if (ok && data.lastBody.value) {
+  if (!ok) return
+
+  // Local patch — update item status and summary without blanking the page
+  if (data.result.value) {
+    const patched = patchGapItemStatus(data.result.value, targetProductId, status)
+    if (patched !== data.result.value) {
+      // Patch was applied successfully
+      data.result.value = patched
+      return
+    }
+  }
+
+  // Fallback: item not found in current result — non-destructive reload
+  if (data.lastBody.value) {
     await data.loadGap(data.lastBody.value)
   }
 }
