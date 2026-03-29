@@ -6,13 +6,14 @@
  *   - reference category selection + dependent mapped-targets loading
  *   - target store filter changes
  *   - comparison execution (POST /api/comparison)
- *   - confirm / reject decisions + background refresh after each action
+ *   - confirm / reject decisions with local state patching
  *
  * Mutation UX policy:
  *   - compare()       — foreground: clears visible result before fetch (manual button)
- *   - makeDecision()  — background: keeps visible result on screen during refresh
- *     After saveMatchDecision succeeds, _runComparison() is called without blanking
- *     comparisonResult so sections stay visible until replacement data arrives.
+ *   - makeDecision()  — local patch: removes the acted-on pair from comparisonResult
+ *     immediately after saveMatchDecision succeeds, without any full rerun.
+ *     Only the affected confirmed_matches entry or candidate_group candidate is
+ *     removed; all other visible sections stay intact.
  */
 import { ref, computed } from 'vue'
 import {
@@ -219,8 +220,39 @@ export function useComparisonPage() {
           ? { target_category_ids: Array.from(selectedTargetCategoryIds.value) }
           : {}),
       })
-      // Background refresh — current sections stay visible until new data arrives
-      await _runComparison()
+      // Local patch — remove only the acted-on pair; all other sections stay intact.
+      if (comparisonResult.value) {
+        const prev = comparisonResult.value
+
+        // Remove from confirmed_matches (auto-suggestions section)
+        const newConfirmedMatches = prev.confirmed_matches.filter(
+          (m) => !(m.reference_product?.id === refProductId && m.target_product?.id === tgtProductId),
+        )
+
+        // Remove matching candidate from candidate_groups;
+        // drop the whole group if it becomes empty.
+        const newCandidateGroups = prev.candidate_groups
+          .map((group) => {
+            if (group.reference_product?.id !== refProductId) return group
+            return {
+              ...group,
+              candidates: group.candidates.filter(
+                (c) => c.target_product?.id !== tgtProductId,
+              ),
+            }
+          })
+          .filter((group) => group.candidates.length > 0)
+
+        comparisonResult.value = {
+          ...prev,
+          confirmed_matches: newConfirmedMatches,
+          candidate_groups:  newCandidateGroups,
+          summary: {
+            ...prev.summary,
+            candidate_groups: newCandidateGroups.length,
+          },
+        }
+      }
     } catch (err) {
       decisionError.value =
         'Помилка збереження рішення: ' + (err instanceof Error ? err.message : String(err))

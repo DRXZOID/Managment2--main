@@ -47,8 +47,8 @@ per-route header band without per-page shell duplication.
 - `@ui_bp.app_errorhandler(404)` catch-all → serve `spa.html` for any non-`/api/` path.
 - `/api/*` 404s → pass through as JSON errors.
 
-This lets browser refreshes and direct deep-link URLs always hydrate the SPA correctly.
-Vue Router then resolves the path to the correct component (or `NotFoundPage`).
+Route `meta.title` and `meta.subtitle` are read by `AppShellHeader` to render the
+per-route page heading.
 
 ---
 
@@ -57,14 +57,21 @@ Vue Router then resolves the path to the correct component (or `NotFoundPage`).
 ```
 App.vue
 └── AppShellLayout.vue
-    ├── AppShellHeader.vue   ← title/subtitle from route.meta, RouterLink nav
-    └── <main>
-        └── <RouterView />   ← active page component mounts here
+    ├── .app-shell-sidebar
+    │   └── AppShellSidebarNav.vue   ← canonical app navigation (left sidebar)
+    └── .app-shell-content
+        ├── AppShellHeader.vue       ← page title/subtitle from route.meta only
+        └── <main>
+            └── <RouterView />       ← active page component mounts here
 ```
 
-`AppShellHeader` reads `route.meta.title` and `route.meta.subtitle` for per-route
-headings. Navigation uses `<RouterLink>` with `exact-active-class="active"` (and
-`active-class=""` to suppress prefix-match highlights on the `/` link).
+**Navigation ownership:**
+- `AppShellSidebarNav` owns **all** canonical app navigation links (`/`, `/service`, `/gap`, `/matches`).
+  Link definitions are centralized in `frontend/src/constants/navigation.ts` — not duplicated in any component.
+- `AppShellHeader` renders **only** the per-route title and subtitle from `route.meta`.
+  It does **not** contain any navigation links.
+- The sidebar is always visible: on wide screens it is a fixed left column;
+  on narrow screens it stacks above the content area.
 
 ---
 
@@ -92,7 +99,8 @@ frontend/
 │   │   ├── gap/              ← /gap — gap review
 │   │   ├── matches/          ← /matches — confirmed matches
 │   │   └── NotFoundPage.vue  ← Client-side 404 (catch-all route)
-│   ├── components/           ← Shared Vue components (AppShellHeader, BaseButton, …)
+│   ├── components/           ← Shared Vue components (AppShellHeader, AppShellSidebarNav, BaseButton, …)
+│   ├── constants/            ← Shared constants (navigation.ts — canonical nav link definitions)
 │   ├── composables/          ← Shared composables (useAsyncState, …)
 │   ├── api/
 │   │   ├── http.ts           ← Low-level typed fetch wrapper (requestJson)
@@ -236,6 +244,11 @@ After any data mutation (confirm/reject match, gap status change, delete row):
 
 | Page | Mutation | Implementation |
 |---|---|---|
-| `/` (comparison) | confirm / reject | `makeDecision()` calls `_runComparison()` without clearing `comparisonResult` first |
+| `/` (comparison) | confirm / reject | `makeDecision()` patches `comparisonResult` locally — removes acted-on pair from `confirmed_matches` / `candidate_groups`; no comparison rerun |
 | `/gap` | status change | `patchGapItemStatus()` updates item + recalculates summary locally |
 | `/matches` | delete row | Row removed locally from `rows` + `total` decremented |
+| `/service` → Mappings | create / update / delete | CRUD response used directly to update `mappings` list in-place; no full reload |
+| `/service` → Mappings | auto-link | Summary stored; mappings reloaded in background — old rows stay visible until new data arrives |
+| `/service` → Scheduler | create job | New job appended to list; only detail for the new job is fetched |
+| `/service` → Scheduler | update job | List badge + `selectedJob` patched in-place from update response; runs not touched |
+| `/service` → Scheduler | upsert schedule | `selectedSchedules` patched locally from returned schedule; no full detail reload |

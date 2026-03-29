@@ -277,6 +277,33 @@ describe('useMappingsTab — triggerAutoLink', () => {
     expect(state.mappings.value).toEqual(mappings)
   })
 
+  it('keeps old mappings visible while background reload is in flight (no blank flash)', async () => {
+    const summary = { created: 1, skipped_existing: 0, skipped_no_norm: 0 }
+    vi.mocked(client.autoLinkCategoryMappings).mockResolvedValueOnce(summary)
+
+    let resolveFetch!: (v: typeof mappings) => void
+    vi.mocked(client.fetchCategoryMappings).mockReturnValueOnce(
+      new Promise<typeof mappings>((res) => { resolveFetch = res }),
+    )
+
+    const state = useMappingsTab()
+    state.refStoreId.value = 1
+    state.targetStoreId.value = 2
+    // Pre-populate the table so we can verify it stays visible
+    state.mappings.value = [...mappings]
+
+    const p = state.triggerAutoLink()
+    await flushPromises() // auto-link resolves; fetch is still in flight
+
+    // Old rows must still be visible — NOT cleared to empty
+    expect(state.mappings.value).toEqual(mappings)
+
+    resolveFetch(mappings)
+    await p
+
+    expect(state.mappings.value).toEqual(mappings)
+  })
+
   it('clearAutoLinkSummary resets summary to null', async () => {
     vi.mocked(client.autoLinkCategoryMappings).mockResolvedValueOnce(
       { created: 1, skipped_existing: 0, skipped_no_norm: 0 },

@@ -230,7 +230,18 @@ export function useMappingsTab(): MappingsTabState {
         refStoreId.value,
         targetStoreId.value,
       )
-      await loadMappings()
+      // Background reload — keep old rows visible (loading=true but mappings stay intact)
+      // so the table never flashes empty between the action completing and new data arriving.
+      if (refStoreId.value && targetStoreId.value) {
+        loading.value = true
+        try {
+          mappings.value = await fetchCategoryMappings(refStoreId.value, targetStoreId.value)
+        } catch (fetchErr) {
+          error.value = fetchErr instanceof Error ? fetchErr.message : String(fetchErr)
+        } finally {
+          loading.value = false
+        }
+      }
     } catch (err) {
       error.value = err instanceof Error ? err.message : String(err)
     } finally {

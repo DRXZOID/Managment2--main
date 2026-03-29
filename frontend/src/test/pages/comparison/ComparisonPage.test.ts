@@ -278,7 +278,7 @@ describe('useComparisonPage — comparison execution', () => {
 })
 
 describe('useComparisonPage — makeDecision', () => {
-  it('calls saveMatchDecision and refreshes comparison', async () => {
+  it('calls saveMatchDecision and does NOT rerun full comparison', async () => {
     const p = useComparisonPage()
     await p.loadStores()
     await flushPromises()
@@ -296,10 +296,11 @@ describe('useComparisonPage — makeDecision', () => {
         match_status:         'confirmed',
       }),
     )
-    expect(compApi.runComparison).toHaveBeenCalledTimes(1)
+    // Local patch — full comparison rerun must NOT happen
+    expect(compApi.runComparison).not.toHaveBeenCalled()
   })
 
-  it('does NOT blank comparisonResult during background refresh after decision', async () => {
+  it('removes the acted-on pair from confirmed_matches after decision', async () => {
     const p = useComparisonPage()
     await p.loadStores()
     await flushPromises()
@@ -307,29 +308,48 @@ describe('useComparisonPage — makeDecision', () => {
     await flushPromises()
     await p.compare()
 
-    // Capture visible result before decision
-    const resultBefore = p.comparisonResult.value
-    expect(resultBefore).not.toBeNull()
+    // confirmed_matches has 1 entry with refId=100, tgtId=200
+    expect(p.comparisonResult.value!.confirmed_matches).toHaveLength(1)
 
-    // Block the refresh so we can inspect state mid-flight
-    let resolveRefresh!: () => void
-    vi.mocked(compApi.runComparison).mockReturnValue(
-      new Promise<typeof comparisonResult>((resolve) => {
-        resolveRefresh = () => resolve(comparisonResult)
-      }),
-    )
+    await p.makeDecision(100, 200, 'confirmed')
 
-    const decisionPromise = p.makeDecision(100, 200, 'rejected')
+    expect(p.comparisonResult.value!.confirmed_matches).toHaveLength(0)
+  })
 
-    // While the refresh is in-flight, result should still be the old value
-    expect(p.comparisonResult.value).toBe(resultBefore)
-    expect(p.hasCompared.value).toBe(true)
+  it('removes the matching candidate from candidate_groups after decision', async () => {
+    const p = useComparisonPage()
+    await p.loadStores()
+    await flushPromises()
+    await p.selectRefCategory(10)
+    await flushPromises()
+    await p.compare()
 
-    resolveRefresh()
-    await decisionPromise
+    // candidate_groups has 1 group (refId=101) with 1 candidate (tgtId=201)
+    expect(p.comparisonResult.value!.candidate_groups).toHaveLength(1)
 
-    // After refresh resolves, result is updated
+    await p.makeDecision(101, 201, 'rejected')
+
+    // Group becomes empty → removed entirely
+    expect(p.comparisonResult.value!.candidate_groups).toHaveLength(0)
+    expect(p.comparisonResult.value!.summary.candidate_groups).toBe(0)
+  })
+
+  it('keeps comparisonResult non-null and other sections intact after decision', async () => {
+    const p = useComparisonPage()
+    await p.loadStores()
+    await flushPromises()
+    await p.selectRefCategory(10)
+    await flushPromises()
+    await p.compare()
+
+    const refOnlyBefore = p.comparisonResult.value!.reference_only.length
+    const tgtOnlyBefore = p.comparisonResult.value!.target_only.length
+
+    await p.makeDecision(100, 200, 'confirmed')
+
     expect(p.comparisonResult.value).not.toBeNull()
+    expect(p.comparisonResult.value!.reference_only).toHaveLength(refOnlyBefore)
+    expect(p.comparisonResult.value!.target_only).toHaveLength(tgtOnlyBefore)
   })
 
   it('sets decisionError on failure without crashing', async () => {

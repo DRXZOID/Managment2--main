@@ -290,15 +290,103 @@ tr:hover td { background: #fafaff; }
 .nav-links a:hover { color: white; text-decoration: underline; }
 
 /* ================================================================
-   COMMIT 2 — App shell primitives
+   COMMIT 2 — App shell: left-sidebar layout
+   Navigation moved from top header band to left sidebar.
+   COMMIT 7 — Hardened accessibility, active-state clarity, focus rings.
    ================================================================ */
 
-/* Canonical page header band — all three pages use this */
+/* ── Two-column app shell ──────────────────────────────────────── */
+.app-shell {
+    display: flex;
+    flex-direction: row;
+    min-height: 100vh;
+}
+
+/* ── Left sidebar ──────────────────────────────────────────────── */
+.app-shell-sidebar {
+    width: 220px;
+    flex-shrink: 0;
+    background: linear-gradient(180deg, #5b5bd6 0%, #403ea3 100%);
+    display: flex;
+    flex-direction: column;
+    padding: 24px 0 32px;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+}
+
+/* Brand/product name at the top of the sidebar */
+.app-shell-brand {
+    color: white;
+    font-weight: 800;
+    font-size: 1.05rem;
+    padding: 0 20px 18px;
+    border-bottom: 1px solid rgba(255,255,255,0.18);
+    margin-bottom: 14px;
+    letter-spacing: 0.02em;
+    user-select: none;
+}
+
+/* ── Sidebar navigation ────────────────────────────────────────── */
+.app-shell-sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0 10px;
+}
+
+.app-shell-sidebar-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: rgba(255,255,255,0.82);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.92rem;
+    padding: 10px 12px;
+    border-radius: var(--radius-md, 10px);
+    /* Left accent border placeholder — transparent until active */
+    border-left: 3px solid transparent;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    outline-offset: 3px;
+}
+
+.app-shell-sidebar-link:hover {
+    background: rgba(255,255,255,0.15);
+    color: white;
+}
+
+/* High-contrast, wide focus ring — visible against the purple sidebar */
+.app-shell-sidebar-link:focus-visible {
+    outline: 3px solid #fff;
+    outline-offset: 2px;
+    background: rgba(255,255,255,0.12);
+}
+
+/* Active state: left accent border + stronger background + full-white text */
+.app-shell-sidebar-link.active {
+    background: rgba(255,255,255,0.22);
+    color: white;
+    font-weight: 700;
+    border-left-color: #fff;
+}
+
+/* ── Content area (right of sidebar) ──────────────────────────── */
+.app-shell-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+/* ── Page header band (title/subtitle — no nav) ────────────────── */
 .app-shell-header {
     background: linear-gradient(135deg, #5b5bd6 0%, #403ea3 100%);
     color: white;
     padding: 28px 24px;
 }
+
 .app-shell-header h1,
 .app-shell-title {
     margin: 0;
@@ -306,12 +394,14 @@ tr:hover td { background: #fafaff; }
     font-weight: 800;
     line-height: 1.2;
 }
+
 .app-shell-subtitle {
     margin: 7px 0 0;
     color: rgba(255,255,255,0.8);
     font-size: 0.95rem;
     max-width: 680px;
 }
+
 .app-shell-actions {
     display: flex;
     gap: 10px;
@@ -320,47 +410,51 @@ tr:hover td { background: #fafaff; }
     align-items: center;
 }
 
-/* Shared top navigation inside the header */
-.app-shell-nav {
-    display: flex;
-    gap: 10px;
-    margin-top: 14px;
-    flex-wrap: wrap;
-}
-.app-shell-nav-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    color: rgba(255,255,255,0.88);
-    text-decoration: none;
-    font-weight: 600;
-    font-size: 0.9rem;
-    padding: 6px 16px;
-    border-radius: 999px;
-    background: rgba(255,255,255,0.13);
-    transition: background 0.15s, color 0.15s;
-}
-.app-shell-nav-link:hover {
-    background: rgba(255,255,255,0.22);
-    color: white;
-}
-.app-shell-nav-link.active {
-    background: rgba(255,255,255,0.28);
-    color: white;
-}
-
-/* Shared page content wrapper (if used outside <main>) */
+/* Shared page content wrapper */
 .page-content {
     max-width: 1280px;
     margin: 0 auto;
     padding: 28px 24px 64px;
 }
 
-/* Shared horizontal page constraint */
 .page-inner {
     max-width: 1280px;
     margin: 0 auto;
 }
+
+/* ── Responsive: narrow screens ────────────────────────────────── */
+@media (max-width: 720px) {
+    .app-shell {
+        flex-direction: column;
+    }
+    .app-shell-sidebar {
+        width: 100%;
+        height: auto;
+        position: static;
+        padding: 10px 0 8px;
+    }
+    .app-shell-brand {
+        display: none;
+    }
+    .app-shell-sidebar-nav {
+        flex-direction: row;
+        flex-wrap: wrap;
+        padding: 0 10px;
+        gap: 4px;
+    }
+    .app-shell-sidebar-link {
+        padding: 8px 10px;
+        font-size: 0.85rem;
+        border-left: none;
+        border-bottom: 3px solid transparent;
+    }
+    .app-shell-sidebar-link.active {
+        border-bottom-color: #fff;
+        border-left-color: transparent;
+    }
+}
+
+
 
 /* ================================================================
    COMMIT 5 — Canonical tabs (promoted from service.css)

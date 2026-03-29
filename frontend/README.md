@@ -103,8 +103,12 @@ src/
   main.ts          ← Single SPA entry point
   App.vue          ← Root component (mounts AppShellLayout)
   router/          ← Vue Router instance and route table
-  layouts/         ← AppShellLayout.vue (header + RouterView)
-  components/      ← Shared Vue components (AppShellHeader, BaseButton, EmptyState, …)
+  layouts/         ← AppShellLayout.vue (left sidebar + content + RouterView)
+  components/      ← Shared Vue components:
+                      AppShellSidebarNav — canonical app navigation (left sidebar)
+                      AppShellHeader — page title/subtitle only (no nav links)
+                      BaseButton, EmptyState, StatusPill, …
+  constants/       ← Shared constants (navigation.ts — canonical nav link list)
   composables/     ← Shared composables (useAsyncState, …)
   pages/           ← Page-level components, composables, api, types
     comparison/    ← / (main comparison page)
@@ -118,7 +122,7 @@ src/
   styles/          ← Styles imported by main.ts
   test/            ← Vitest unit and component tests
     router/        ← Router contract tests
-    components/    ← Component tests
+    components/    ← Component tests (AppShellHeader, AppShellSidebarNav, …)
     composables/   ← Composable tests
     pages/         ← Page-level tests
     api/           ← API layer tests

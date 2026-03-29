@@ -7,7 +7,6 @@ import AppShellHeader from '@/components/AppShellHeader.vue'
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Build a minimal router that covers the four SPA routes. */
 function makeRouter(initialPath = '/') {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -22,17 +21,14 @@ function makeRouter(initialPath = '/') {
   return router
 }
 
-/** Mount AppShellHeader after the router has resolved the initial navigation. */
 async function mountHeader(path = '/') {
   const router = makeRouter(path)
   await router.isReady()
-  return mount(AppShellHeader, {
-    global: { plugins: [router] },
-  })
+  return mount(AppShellHeader, { global: { plugins: [router] } })
 }
 
 // ---------------------------------------------------------------------------
-// Structure
+// Structure — AppShellHeader is page-heading-only (no nav links)
 // ---------------------------------------------------------------------------
 
 describe('AppShellHeader — structure', () => {
@@ -41,22 +37,19 @@ describe('AppShellHeader — structure', () => {
     expect(wrapper.find('header.app-shell-header').exists()).toBe(true)
   })
 
-  it('renders a nav element', async () => {
+  it('does NOT render a nav element (nav ownership moved to AppShellSidebarNav)', async () => {
     const wrapper = await mountHeader()
-    expect(wrapper.find('nav').exists()).toBe(true)
+    expect(wrapper.find('nav').exists()).toBe(false)
   })
 
-  it('renders four navigation links', async () => {
+  it('does NOT render any RouterLink elements', async () => {
     const wrapper = await mountHeader()
-    const links = wrapper.findAllComponents({ name: 'RouterLink' })
-    expect(links).toHaveLength(4)
+    expect(wrapper.findAllComponents({ name: 'RouterLink' })).toHaveLength(0)
   })
 
-  it('every nav link has app-shell-nav-link class', async () => {
+  it('does NOT render any anchor elements', async () => {
     const wrapper = await mountHeader()
-    wrapper.findAll('a').forEach(link => {
-      expect(link.classes()).toContain('app-shell-nav-link')
-    })
+    expect(wrapper.findAll('a')).toHaveLength(0)
   })
 })
 
@@ -80,6 +73,17 @@ describe('AppShellHeader — route meta', () => {
     expect(wrapper.find('.app-shell-subtitle').text()).toBe('Subtitle A')
   })
 
+  it('shows correct subtitle for each route', async () => {
+    for (const [path, expected] of [
+      ['/service', 'Subtitle B'],
+      ['/gap',     'Subtitle C'],
+      ['/matches', 'Subtitle D'],
+    ] as const) {
+      const wrapper = await mountHeader(path)
+      expect(wrapper.find('.app-shell-subtitle').text()).toBe(expected)
+    }
+  })
+
   it('falls back to "Pricewatch" when meta.title is absent', async () => {
     const router = createRouter({
       history: createMemoryHistory(),
@@ -100,55 +104,5 @@ describe('AppShellHeader — route meta', () => {
     await router.isReady()
     const wrapper = mount(AppShellHeader, { global: { plugins: [router] } })
     expect(wrapper.find('.app-shell-subtitle').exists()).toBe(false)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Navigation link destinations
-// ---------------------------------------------------------------------------
-
-describe('AppShellHeader — navigation links', () => {
-  it('contains a link to /', async () => {
-    const wrapper = await mountHeader()
-    const hrefs = wrapper.findAll('a').map(a => a.attributes('href'))
-    expect(hrefs).toContain('/')
-  })
-
-  it('contains a link to /service', async () => {
-    const wrapper = await mountHeader()
-    const hrefs = wrapper.findAll('a').map(a => a.attributes('href'))
-    expect(hrefs).toContain('/service')
-  })
-
-  it('contains a link to /gap', async () => {
-    const wrapper = await mountHeader()
-    const hrefs = wrapper.findAll('a').map(a => a.attributes('href'))
-    expect(hrefs).toContain('/gap')
-  })
-
-  it('contains a link to /matches', async () => {
-    const wrapper = await mountHeader()
-    const hrefs = wrapper.findAll('a').map(a => a.attributes('href'))
-    expect(hrefs).toContain('/matches')
-  })
-})
-
-// ---------------------------------------------------------------------------
-// aria-current accessibility
-// ---------------------------------------------------------------------------
-
-describe('AppShellHeader — aria-current', () => {
-  it('sets aria-current="page" on the active link', async () => {
-    const wrapper = await mountHeader('/service')
-    const serviceLink = wrapper.findAll('a').find(a => a.attributes('href') === '/service')
-    expect(serviceLink?.attributes('aria-current')).toBe('page')
-  })
-
-  it('does not set aria-current on inactive links', async () => {
-    const wrapper = await mountHeader('/service')
-    const otherLinks = wrapper.findAll('a').filter(a => a.attributes('href') !== '/service')
-    otherLinks.forEach(link => {
-      expect(link.attributes('aria-current')).toBeUndefined()
-    })
   })
 })
