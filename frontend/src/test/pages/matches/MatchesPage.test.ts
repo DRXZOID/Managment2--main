@@ -415,3 +415,95 @@ describe('MatchesSummary — KPI bar', () => {
     expect(w.findAll('.mw-kpi-card')).toHaveLength(3)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Commit 8 — Regression: /matches workspace layout stabilization
+// ---------------------------------------------------------------------------
+
+import MatchesTable from '@/pages/matches/components/MatchesTable.vue'
+
+describe('MatchesPage — workspace layout contract (Commit 8)', () => {
+  it('MatchesFilters lives inside an aside.mw-rail element (left rail)', () => {
+    // MatchesFilters renders the left filter rail
+    const w = mount(MatchesFilters, { props: defaultFilterProps })
+    // The outer container must have the filters rail class
+    expect(w.find('.mw-filters-rail').exists()).toBe(true)
+  })
+
+  it('MatchesFilters has a visible heading "Фільтри"', () => {
+    const w = mount(MatchesFilters, { props: defaultFilterProps })
+    expect(w.find('.mw-rail-heading').exists()).toBe(true)
+    expect(w.text()).toContain('Фільтри')
+  })
+
+  it('MatchesSummary is the KPI header band — shows zero counts gracefully', () => {
+    const w = mount(MatchesSummary, { props: { total: 0, confirmed: 0, rejected: 0 } })
+    // All KPI values still render
+    expect(w.findAll('.mw-kpi-card')).toHaveLength(3)
+    const nums = w.findAll('.num').map((n) => n.text())
+    expect(nums.every((n) => n === '0')).toBe(true)
+  })
+
+  it('MatchesTable renders in mw-table-panel with count toolbar', () => {
+    const rows = [makeRow()]
+    const w = mount(MatchesTable, { props: { rows, deletingId: null } })
+    expect(w.find('.mw-table-panel').exists()).toBe(true)
+    expect(w.find('.mw-table-toolbar').exists()).toBe(true)
+    expect(w.find('.mw-table-count').exists()).toBe(true)
+  })
+
+  it('MatchesTable count toolbar shows row count', () => {
+    const rows = [makeRow(), makeRow({ id: 2 })]
+    const w = mount(MatchesTable, { props: { rows, deletingId: null } })
+    expect(w.find('.mw-table-count').text()).toContain('2')
+  })
+
+  it('MatchesTable renders a scrollable table wrapper', () => {
+    const w = mount(MatchesTable, { props: { rows: [makeRow()], deletingId: null } })
+    expect(w.find('.mw-table-scroll').exists()).toBe(true)
+    expect(w.find('table').exists()).toBe(true)
+  })
+})
+
+describe('MatchesPage — loading / error / empty state hierarchy (Commit 8)', () => {
+  it('hasStatusBlock is true while bootstrapping', async () => {
+    const state = useMatchesPage()
+    // isBootstrapping is true until stores are loaded
+    expect(state.hasStatusBlock.value).toBe(true)
+    await flushPromises()
+    expect(state.hasStatusBlock.value).toBe(false)
+  })
+
+  it('hasStatusBlock is true while loading rows', async () => {
+    let resolve!: (v: { rows: ReturnType<typeof makeRow>[]; total: number }) => void
+    vi.mocked(matchesApi.listProductMappings).mockReturnValue(
+      new Promise<{ rows: ReturnType<typeof makeRow>[]; total: number }>((r) => { resolve = r }),
+    )
+    const state = useMatchesPage()
+    await flushPromises()
+    const loadPromise = state.loadMappings()
+    expect(state.hasStatusBlock.value).toBe(true)
+    resolve({ rows: [], total: 0 })
+    await loadPromise
+    // After load, no error/info message AND hasLoaded
+    expect(state.errorMessage.value).toBeNull()
+  })
+
+  it('errorMessage surfaces in hasStatusBlock', async () => {
+    vi.mocked(matchesApi.listProductMappings).mockRejectedValue(new Error('network'))
+    const state = useMatchesPage()
+    await state.loadMappings()
+    expect(state.hasStatusBlock.value).toBe(true)
+    expect(state.errorMessage.value).toBeTruthy()
+  })
+
+  it('infoMessage surfaces in hasStatusBlock when no rows', async () => {
+    const state = useMatchesPage()
+    await flushPromises()
+    await state.loadMappings()
+    // Empty result → infoMessage set
+    expect(state.infoMessage.value).toBeTruthy()
+    expect(state.hasStatusBlock.value).toBe(true)
+  })
+})
+

@@ -124,7 +124,76 @@ frontend/
 
 ---
 
-## Per-Page Structure Convention
+## Workspace Pages
+
+### `/comparison` — Two-column operator workspace (RFC-016 v2)
+
+```
+ComparisonPage.vue
+├── ComparisonControlRail.vue        ← left sticky rail (260 px)
+│   ├── <select> target store        ← single selector; no reference-store selector
+│   ├── ReferenceCategoryList.vue    ← plain selectable rows; shows product_count badge
+│   └── compare button + status
+├── ComparisonSummaryBar.vue         ← context strip + four KPI cards
+├── ComparisonWorkspacePlaceholder   ← shown when comparisonWorkspaceState === 'idle'
+├── ComparisonCollapsibleSection     ← shared collapsible shell (collapsed by default)
+│   ├── AutoSuggestionsTable.vue     ← confirmed_matches where is_confirmed=false
+│   ├── CandidateGroups.vue / CandidateGroupCard.vue  ← needs-choice groups
+│   └── ReferenceOnlySection.vue    ← reference-only items
+├── TargetOnlySection.vue            ← secondary <details>-collapsed section
+└── ManualPickerDrawer.vue           ← shared right-side drawer (one instance on page)
+```
+
+**State machine** (`comparisonWorkspaceState` in `useComparisonPage`):
+
+| State | Condition | UI shown |
+|---|---|---|
+| `idle` | no compare triggered yet | `ComparisonWorkspacePlaceholder` |
+| `comparing` | fetch in progress | `ComparisonSummaryBar` loading state |
+| `review` | results available, ≥1 review item | collapsible sections (all collapsed by default) |
+| `empty` | compared, zero review items | "Все зіставлено!" empty state |
+| `error` | compare API failure | error banner |
+
+**Category rail counts:** The `product_count` field is always returned by
+`GET /api/stores/:id/categories` and rendered as a badge next to each category name.
+Zero-count categories are marked with `.cw-cat-count--empty` for visual distinction.
+
+**Section collapse policy:** All three primary sections (`autoSuggestions`,
+`candidateGroups`, `referenceOnly`) start collapsed (`sectionExpanded` defaults to
+`false`). Collapse state resets on every new compare run.
+
+**Manual picker:** One `ManualPickerDrawer` instance lives on `ComparisonPage`.
+Any candidate-group card or reference-only item opens it via `open-picker` event.
+
+---
+
+### `/matches` — Three-zone workspace
+
+```
+MatchesPage.vue
+├── aside.mw-rail                    ← left filter rail (sticky)
+│   └── MatchesFilters.vue           ← store/category/status filters; no search input here
+├── .mw-content
+│   ├── .mw-header.panel             ← search bar + KPI summary
+│   │   └── MatchesSummary.vue       ← three KPI cards (total/confirmed/rejected)
+│   └── .mw-results.panel            ← results table
+│       └── MatchesTable.vue / MatchesTableRow.vue
+```
+
+**Search vs. filters split:** The text search input lives in `.mw-header` (workspace
+top), not in `MatchesFilters`. `MatchesFilters` owns store/category/status selectors
+only — this keeps the filter rail compact and the search bar visually dominant.
+
+**Active filter badge:** `MatchesFilters` shows a `.mw-rail-badge` counter when
+`activeFiltersCount > 0`, giving the operator a quick sense of how many criteria are
+active without expanding the rail.
+
+**Non-destructive load policy:** `loadMappings()` keeps existing rows visible while
+the new request is in-flight (`isLoadingRows=true`). Only on success are `rows`
+replaced. This avoids table flash on filter/refresh.
+
+---
+
 
 Every page module under `frontend/src/pages/<page>/` follows this layout:
 

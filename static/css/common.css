@@ -778,6 +778,29 @@ dialog::backdrop { background: rgba(0,0,0,0.42); }
     min-width: 0;
 }
 
+/* ── Category row with product count (Commit 2) ── */
+.cw-cat-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+.cw-cat-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.cw-cat-count {
+    flex-shrink: 0;
+    font-size: 0.72rem;
+}
+.cw-cat-count--empty {
+    background: #f3f4f6;
+    color: #9ca3af;
+}
+
 /* ── Context strip (ref category + target store chips) ── */
 .cw-context-strip {
     display: flex;
